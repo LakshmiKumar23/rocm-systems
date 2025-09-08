@@ -25,10 +25,16 @@ extend-exclude = [
 
 [tool.ruff.lint]
 # Enable Pyflakes (F), pycodestyle (E, W for PEP8), and isort (I) rules.
-select = ["E", "W", "F", "I"]
+select = ["E", "W", "F", "I", "ANN"]
 ignore = ["E713", "E711"]
 fixable = ["ALL"]
 unfixable = []
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true  #allow Any for *args
+ignore-fully-untyped = false  #require type annotations
+suppress-dummy-args = true  #don't require annotation for "_" arguments
+suppress-none-returning = false  #require explicit None return types
 
 [tool.ruff.format]
 preview = true
