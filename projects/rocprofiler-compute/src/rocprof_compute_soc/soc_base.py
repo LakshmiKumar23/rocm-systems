@@ -607,6 +607,26 @@ class OmniSoC_Base:
                 else:
                     output_files[-1].add("SQ_ACCUM_PREV_HIRES")
                 accu_file_count += 1
+        
+        # TCC read group must be collected together
+        tcc_read_counters = ["TCC_EA0_RDREQ_sum", "TCC_BUBBLE_sum", "TCC_EA0_RDREQ_32B_sum"]
+        if all(c in counters for c in tcc_read_counters):
+            for c in tcc_read_counters:
+                counters.remove(c)
+            output_files.append(CounterFile("TCC_RDREQ.txt", self.__perfmon_config))
+            for c in tcc_read_counters:
+                output_files[-1].add(c)
+            accu_file_count += 1
+
+        # TCC write group must be collected together  
+        tcc_write_counters = ["TCC_EA0_WRREQ_sum", "TCC_EA0_WRREQ_64B_sum"]
+        if all(c in counters for c in tcc_write_counters):
+            for c in tcc_write_counters:
+                counters.remove(c)
+            output_files.append(CounterFile("TCC_WRREQ.txt", self.__perfmon_config))
+            for c in tcc_write_counters:
+                output_files[-1].add(c)
+            accu_file_count += 1
 
         file_count = 0
         # Store all channels for a TCC channel counter in the same file

@@ -154,7 +154,7 @@ class RocProfCompute_Base:
 
         # Set default output directory if not specified
         if isinstance(args.path, str):
-            csv_patterns = ["pmc_perf_*.csv", "SQ_*.csv", "SQC_*.csv"]
+            csv_patterns = ["pmc_perf_*.csv", "SQ_*.csv", "SQC_*.csv", "TCC_*.csv"]
             files = [
                 file
                 for pattern in csv_patterns
