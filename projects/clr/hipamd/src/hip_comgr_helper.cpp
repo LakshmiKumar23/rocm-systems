@@ -411,11 +411,17 @@ bool compileToExecutable(const amd_comgr_data_set_t compileInputs, const std::st
 
 bool compileToBitCode(const amd_comgr_data_set_t compileInputs, const std::string& isa,
                       std::vector<std::string>& compileOptions, std::string& buildLog,
-                      std::vector<char>& LLVMBitcode) {
+                      std::vector<char>& LLVMBitcode, DataKind bc_type) {
   amd_comgr_language_t lang = AMD_COMGR_LANGUAGE_HIP;
   amd_comgr_action_info_t action;
   amd_comgr_data_set_t output;
   amd_comgr_data_set_t input = compileInputs;
+  amd_comgr_action_kind_t action_kind = AMD_COMGR_ACTION_COMPILE_SOURCE_WITH_DEVICE_LIBS_TO_BC;
+  amd_comgr_data_kind_t data_kind = AMD_COMGR_DATA_KIND_BC;
+  if (bc_type == kSPIRV) {
+    action_kind = AMD_COMGR_ACTION_COMPILE_SOURCE_TO_SPIRV;
+    data_kind = AMD_COMGR_DATA_KIND_SPIRV;
+  }
 
   if (!createAction(action, compileOptions, isa, lang)) {
     return false;
@@ -426,9 +432,8 @@ bool compileToBitCode(const amd_comgr_data_set_t compileInputs, const std::strin
     return false;
   }
 
-  if (auto res = amd::Comgr::do_action(AMD_COMGR_ACTION_COMPILE_SOURCE_WITH_DEVICE_LIBS_TO_BC,
-                                       action, input, output);
-      res != AMD_COMGR_STATUS_SUCCESS) {
+
+  if (auto res = amd::Comgr::do_action(action_kind, action, input, output); res != AMD_COMGR_STATUS_SUCCESS) {
     extractBuildLog(output, buildLog);
     amd::Comgr::destroy_action_info(action);
     amd::Comgr::destroy_data_set(output);
@@ -441,7 +446,7 @@ bool compileToBitCode(const amd_comgr_data_set_t compileInputs, const std::strin
     return false;
   }
 
-  if (!extractByteCodeBinary(output, AMD_COMGR_DATA_KIND_BC, LLVMBitcode)) {
+  if (!extractByteCodeBinary(output, data_kind, LLVMBitcode)) {
     amd::Comgr::destroy_action_info(action);
     amd::Comgr::destroy_data_set(output);
     return false;

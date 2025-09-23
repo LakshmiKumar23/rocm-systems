@@ -34,6 +34,10 @@ THE SOFTWARE.
 
 namespace hip {
 namespace helpers {
+enum DataKind {
+  kLLVM = 0x1,
+  kSPIRV = 0x2
+};
 bool UnbundleBitCode(const std::vector<char>& bundled_bit_code, const std::string& isa,
                      size_t& co_offset, size_t& co_size);
 bool addCodeObjData(amd_comgr_data_set_t& input, const std::vector<char>& source,
@@ -50,7 +54,7 @@ bool compileToExecutable(const amd_comgr_data_set_t compileInputs, const std::st
                          std::vector<char>& exe);
 bool compileToBitCode(const amd_comgr_data_set_t compileInputs, const std::string& isa,
                       std::vector<std::string>& compileOptions, std::string& buildLog,
-                      std::vector<char>& LLVMBitcode);
+                      std::vector<char>& LLVMBitcode, DataKind kind);
 bool linkLLVMBitcode(const amd_comgr_data_set_t linkInputs, const std::string& isa,
                      std::vector<std::string>& linkOptions, std::string& buildLog,
                      std::vector<char>& LinkedLLVMBitcode);
@@ -143,6 +147,7 @@ class RTCProgram {
   std::string isa_;
   std::string build_log_;
   std::vector<char> executable_;
+  helpers::DataKind bc_type_;
 
   amd_comgr_data_set_t exec_input_;
 };
