@@ -769,6 +769,24 @@ amdsmi_get_gpu_enumeration_info(amdsmi_processor_handle processor_handle,
        << smi_amdgpu_get_status_string(status, false) << "\n";
     LOG_INFO(ss);
 
+    // Initialize OAM ID to default/unknown value
+    info->oam_id = std::numeric_limits<uint32_t>::max();
+
+    // Retrieve OAM ID (XGMI Physical ID)
+    uint16_t tmp_oam_id = 0;
+    amdsmi_status_t oam_status = rsmi_wrapper(rsmi_dev_xgmi_physical_id_get, processor_handle, 0, &tmp_oam_id);
+    if (oam_status == AMDSMI_STATUS_SUCCESS) {
+        if (tmp_oam_id == std::numeric_limits<uint16_t>::max()) {
+            info->oam_id = std::numeric_limits<uint32_t>::max();
+        } else {
+            info->oam_id = tmp_oam_id;
+        }
+        ss << "; oam_id retrieved successfully: " << tmp_oam_id;
+    } else {
+        ss << "; oam_id retrieval failed with status: " << smi_amdgpu_get_status_string(oam_status, false);
+    }
+    LOG_DEBUG(ss);
+
     return AMDSMI_STATUS_SUCCESS;
 }
 

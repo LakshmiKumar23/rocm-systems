@@ -291,6 +291,7 @@ Field | Content
 `hsa_id` | HSA ID
 `hip_id` | HIP ID
 `hip_uuid` | HIP UUID
+`oam_id` | Physical XGMI ID or OAM ID
 
 Exceptions that can be thrown by `amdsmi_get_gpu_enumeration_info` function:
 
@@ -310,6 +311,7 @@ try:
         print("HSA ID:", info['hsa_id'])
         print("HIP ID:", info['hip_id'])
         print("HIP UUID:", info['hip_uuid'])
+        print("OAM ID:", info['oam_id'])
 except AmdSmiException as e:
     print(e)
 ```
