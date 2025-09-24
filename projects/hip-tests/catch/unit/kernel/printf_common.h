@@ -56,7 +56,7 @@ class CaptureStream {
     close(pipe[WRITE]);
   }
 
-  void BeginCapture() {
+  void beginCapture() {
     fflush(stdout);
     if (dup2(pipe[WRITE], fileno(stdout)) == -1) {
       error(0, errno, "Error");
@@ -64,7 +64,7 @@ class CaptureStream {
     }
   }
 
-  void EndCapture() {
+  void endCapture() {
     // End Capture
     fflush(stdout);
     if (dup2(orig_fd, fileno(stdout)) == -1) {
@@ -83,7 +83,7 @@ class CaptureStream {
     result = std::string(buf, bytesRead);
   }
 
-  std::string GetCaptureData() { return result; }
+  std::string getCapturedData() { return result; }
 
  private:
   enum PIPES { READ, WRITE };

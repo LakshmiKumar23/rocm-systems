@@ -48,19 +48,19 @@ __global__ void run_printf() { printf("Hello World"); }
 TEST_CASE("Unit_kernel_ChkPrintf", "[multigpu]") {
   int device_count = 0;
   HIP_CHECK(hipGetDeviceCount(&device_count));
+  CaptureStream capture;
   std::string check = "Hello World";
   for (int i = 0; i < device_count; ++i) {
     HIP_CHECK(hipSetDevice(i));
     if (!HipTest::isPcieAtomicSupported()) continue;
 
-    CaptureStream capture;
-    capture.BeginCapture();
+    capture.beginCapture();
     hipLaunchKernelGGL(run_printf, dim3(1), dim3(1), 0, 0);
     HIP_CHECK(hipDeviceSynchronize());
-    capture.EndCapture();
+    capture.endCapture();
 
 
-    auto CapturedData = capture.GetCaptureData();
+    auto CapturedData = capture.getCapturedData();
     int result = check.compare(CapturedData);
     REQUIRE(result == 0);
   }
