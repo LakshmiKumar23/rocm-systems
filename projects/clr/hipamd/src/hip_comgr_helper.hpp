@@ -53,7 +53,7 @@ bool compileToBitCode(const amd_comgr_data_set_t compileInputs, const std::strin
                       std::vector<char>& LLVMBitcode);
 bool linkLLVMBitcode(const amd_comgr_data_set_t linkInputs, const std::string& isa,
                      std::vector<std::string>& linkOptions, std::string& buildLog,
-                     std::vector<char>& LinkedLLVMBitcode);
+                     std::vector<char>& LinkedLLVMBitcode, bool spirv_bc = false);
 bool createExecutable(const amd_comgr_data_set_t linkInputs, const std::string& isa,
                       std::vector<std::string>& exeOptions, std::string& buildLog,
                       std::vector<char>& executable, bool spirv_bc = false);
