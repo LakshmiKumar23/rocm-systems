@@ -68,6 +68,9 @@ CounterAQLPacket::CounterMemoryPool::Alloc(void** ptr, size_t size, desc_t flags
         return status;
     }
 
+    ROCP_WARNING << "Allocated memory: 0x" << std::hex << reinterpret_cast<std::uintptr_t>(*ptr)
+                 << "  size: 0x" << size << "  flags: 0x" << flags.raw << std::dec;
+
     status = pool.fill_fn(*ptr, 0u, size / sizeof(uint32_t));
     if(status != HSA_STATUS_SUCCESS) return status;
 
@@ -79,6 +82,8 @@ void
 CounterAQLPacket::CounterMemoryPool::Free(void* ptr, void* data)
 {
     if(ptr == nullptr) return;
+
+    ROCP_WARNING << "Free 0x" << std::hex << reinterpret_cast<std::uintptr_t>(ptr) << std::dec;
 
     assert(data);
     auto& pool = *reinterpret_cast<CounterAQLPacket::CounterMemoryPool*>(data);
