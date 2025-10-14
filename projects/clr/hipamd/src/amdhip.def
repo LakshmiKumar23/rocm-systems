@@ -529,3 +529,5 @@ hipExtSetLoggingParams
 hipMemSetMemPool
 hipMemGetMemPool
 hipMipmappedArrayGetMemoryRequirements
+hipKernelSetAttribute
+hipKernelGetFunction

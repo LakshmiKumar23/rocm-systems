@@ -474,7 +474,9 @@ enum hip_api_id_t {
   HIP_API_ID_hipMemSetMemPool = 454,
   HIP_API_ID_hipMemGetMemPool = 455,
   HIP_API_ID_hipMipmappedArrayGetMemoryRequirements = 456,
-  HIP_API_ID_LAST = 456,
+  HIP_API_ID_hipKernelSetAttribute = 457,
+  HIP_API_ID_hipKernelGetFunction = 458,
+  HIP_API_ID_LAST = 458,
 
   HIP_API_ID_hipChooseDevice = HIP_API_ID_CONCAT(HIP_API_ID_,hipChooseDevice),
   HIP_API_ID_hipGetDeviceProperties = HIP_API_ID_CONCAT(HIP_API_ID_,hipGetDeviceProperties),
@@ -744,6 +746,8 @@ static inline const char* hip_api_name(const uint32_t id) {
     case HIP_API_ID_hipKernelGetLibrary: return "hipKernelGetLibrary";
     case HIP_API_ID_hipKernelGetName: return "hipKernelGetName";
     case HIP_API_ID_hipKernelGetParamInfo: return "hipKernelGetParamInfo";
+    case HIP_API_ID_hipKernelGetFunction: return "hipKernelGetFunction";
+    case HIP_API_ID_hipKernelSetAttribute: return "hipKernelSetAttribute";
     case HIP_API_ID_hipLaunchByPtr: return "hipLaunchByPtr";
     case HIP_API_ID_hipLaunchCooperativeKernel: return "hipLaunchCooperativeKernel";
     case HIP_API_ID_hipLaunchCooperativeKernelMultiDevice: return "hipLaunchCooperativeKernelMultiDevice";
@@ -1194,6 +1198,8 @@ static inline uint32_t hipApiIdByName(const char* name) {
   if (strcmp("hipKernelGetLibrary", name) == 0) return HIP_API_ID_hipKernelGetLibrary;
   if (strcmp("hipKernelGetName", name) == 0) return HIP_API_ID_hipKernelGetName;
   if (strcmp("hipKernelGetParamInfo", name) == 0) return HIP_API_ID_hipKernelGetParamInfo;
+  if (strcmp("hipKernelGetFunction", name) == 0) return HIP_API_ID_hipKernelGetFunction;
+  if (strcmp("hipKernelSetAttribute", name) == 0) return HIP_API_ID_hipKernelSetAttribute;
   if (strcmp("hipLaunchByPtr", name) == 0) return HIP_API_ID_hipLaunchByPtr;
   if (strcmp("hipLaunchCooperativeKernel", name) == 0) return HIP_API_ID_hipLaunchCooperativeKernel;
   if (strcmp("hipLaunchCooperativeKernelMultiDevice", name) == 0) return HIP_API_ID_hipLaunchCooperativeKernelMultiDevice;
@@ -2728,6 +2734,17 @@ typedef struct hip_api_data_s {
       size_t* paramSize;
       size_t paramSize__val;
     } hipKernelGetParamInfo;
+    struct {  
+      hipFunction_t* pFunc;
+      hipFunction_t pFunc__val;
+      hipKernel_t kernel;
+    } hipKernelGetFunction;
+    struct {
+      hipFunction_attribute attrib;
+      int value;
+      hipKernel_t kernel;
+      hipDevice_t dev;
+    } hipKernelSetAttribute;
     struct {
       const void* hostFunction;
     } hipLaunchByPtr;
@@ -5424,6 +5441,18 @@ typedef struct hip_api_data_s {
   cb_data.args.hipKernelGetParamInfo.paramOffset = (size_t*)paramOffset; \
   cb_data.args.hipKernelGetParamInfo.paramSize = (size_t*)paramSize; \
 };
+// hipKernelGetFunction[('hipFunction_t*', 'pFunc'), ('hipKernel_t', 'kernel')]
+#define INIT_hipKernelGetFunction_CB_ARGS_DATA(cb_data) { \
+  cb_data.args.hipKernelGetFunction.pFunc = (hipFunction_t*)pFunc; \
+  cb_data.args.hipKernelGetFunction.kernel = (hipKernel_t)kernel; \
+};
+// hipKernelSetAttribute[('hipFunction_attribute', 'attrib'), ('int', 'value'), ('hipKernel_t', 'kernel'), ('hipDevice_t', 'dev')]
+#define INIT_hipKernelSetAttribute_CB_ARGS_DATA(cb_data) { \
+  cb_data.args.hipKernelSetAttribute.attrib = (hipFunction_attribute)attrib; \
+  cb_data.args.hipKernelSetAttribute.value = (int)value; \
+  cb_data.args.hipKernelSetAttribute.kernel = (hipKernel_t)kernel; \
+  cb_data.args.hipKernelSetAttribute.dev = (hipDevice_t)dev; \
+};
 // hipLaunchByPtr[('const void*', 'hostFunction')]
 #define INIT_hipLaunchByPtr_CB_ARGS_DATA(cb_data) { \
   cb_data.args.hipLaunchByPtr.hostFunction = (const void*)hostFunction; \
@@ -7796,6 +7825,12 @@ static inline void hipApiArgsInit(hip_api_id_t id, hip_api_data_t* data) {
 // hipKernelGetName[('const char**', 'name'), ('hipKernel_t', 'kernel')]
     case HIP_API_ID_hipKernelGetName:
       if (data->args.hipKernelGetName.name) data->args.hipKernelGetName.name__val = *(data->args.hipKernelGetName.name);
+// hipKernelGetFunction[('hipFunction_t*', 'pFunc'), ('hipKernel_t', 'kernel')]
+    case HIP_API_ID_hipKernelGetFunction:
+      if (data->args.hipKernelGetFunction.pFunc) data->args.hipKernelGetFunction.pFunc__val = *(data->args.hipKernelGetFunction.pFunc);
+      break;
+// hipKernelSetAttribute[('hipFunction_attribute', 'attrib'), ('int', 'value'), ('hipKernel_t', 'kernel'), ('hipDevice_t', 'dev')]
+    case HIP_API_ID_hipKernelSetAttribute:
       break;
 // hipKernelGetParamInfo[('hipKernel_t', 'kernel'), ('size_t', 'paramIndex'), ('size_t*', 'paramOffset'), ('size_t*', 'paramSize')]
     case HIP_API_ID_hipKernelGetParamInfo:
@@ -10419,6 +10454,19 @@ static inline const char* hipApiString(hip_api_id_t id, const hip_api_data_t* da
       if (data->args.hipKernelGetName.name == NULL) oss << "name=NULL";
       else { oss << "name="; roctracer::hip_support::detail::operator<<(oss, (void*)data->args.hipKernelGetName.name__val); }
       oss << ", kernel="; roctracer::hip_support::detail::operator<<(oss, data->args.hipKernelGetName.kernel);
+    case HIP_API_ID_hipKernelGetFunction:
+      oss << "hipKernelGetFunction(";
+      if (data->args.hipKernelGetFunction.pFunc == NULL) oss << "pFunc=NULL";
+      else { oss << "pFunc="; roctracer::hip_support::detail::operator<<(oss, data->args.hipKernelGetFunction.pFunc__val); }
+      oss << ", kernel="; roctracer::hip_support::detail::operator<<(oss, data->args.hipKernelGetFunction.kernel);
+      oss << ")";
+    break;
+    case HIP_API_ID_hipKernelSetAttribute:
+      oss << "hipKernelSetAttribute(";
+      oss << "attrib="; roctracer::hip_support::detail::operator<<(oss, data->args.hipKernelSetAttribute.attrib);
+      oss << ", value="; roctracer::hip_support::detail::operator<<(oss, data->args.hipKernelSetAttribute.value);
+      oss << ", kernel="; roctracer::hip_support::detail::operator<<(oss, data->args.hipKernelSetAttribute.kernel);
+      oss << ", dev="; roctracer::hip_support::detail::operator<<(oss, data->args.hipKernelSetAttribute.dev);
       oss << ")";
     break;
     case HIP_API_ID_hipKernelGetParamInfo:

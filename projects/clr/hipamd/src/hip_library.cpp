@@ -296,4 +296,73 @@ hipError_t hipKernelGetParamInfo(hipKernel_t kernel, size_t paramIndex, size_t* 
   HIP_RETURN(hipSuccess);
 }
 
+hipError_t hipKernelSetAttribute(hipFunction_attribute attrib, int value, hipKernel_t kernel,
+                                 hipDevice_t dev) {
+  HIP_INIT_API(hipKernelSetAttribute, attrib, value, kernel, dev);
+
+  if (kernel == nullptr) {
+    HIP_RETURN(hipErrorInvalidValue);
+  }
+
+  hip::DeviceFunc* d_function = hip::DeviceFunc::asFunction(reinterpret_cast<hipFunction_t>(kernel));
+   if (d_function == nullptr) {
+    HIP_RETURN(hipErrorInvalidHandle);
+  }
+  amd::Kernel* d_kernel = d_function->kernel();
+  if (d_kernel == nullptr) {
+    HIP_RETURN(hipErrorInvalidDeviceFunction);
+  }
+
+  device::Kernel* deviceKernel = const_cast<device::Kernel*>(
+      d_kernel->getDeviceKernel(*(hip::getCurrentDevice()->devices()[dev])));
+
+  device::Kernel::WorkGroupInfo* wrkGrpInfo = deviceKernel->workGroupInfo();
+
+  if (wrkGrpInfo == nullptr) {
+    HIP_RETURN(hipErrorMissingConfiguration);
+  }
+
+  switch (attrib) {
+    case HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES:
+      if (value > (hip::getCurrentDevice()->devices()[dev]->info().localMemSize_)) {
+        HIP_RETURN(hipErrorInvalidValue);
+      }
+      wrkGrpInfo->localMemSize_ = static_cast<size_t>(value);
+      break;
+    /* Read Only*/
+    case HIP_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK:
+    case HIP_FUNC_ATTRIBUTE_CONST_SIZE_BYTES:
+    case HIP_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES:
+    case HIP_FUNC_ATTRIBUTE_NUM_REGS:
+    case HIP_FUNC_ATTRIBUTE_CACHE_MODE_CA:
+    case HIP_FUNC_ATTRIBUTE_PTX_VERSION:
+    case HIP_FUNC_ATTRIBUTE_BINARY_VERSION:
+      HIP_RETURN(hipErrorInvalidValue);
+      break;
+    case HIP_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES:
+      if ((value < 0) || (value > (wrkGrpInfo->availableLDSSize_ - wrkGrpInfo->localMemSize_))) {
+        HIP_RETURN(hipErrorInvalidValue);
+      }
+      wrkGrpInfo->maxDynamicSharedSizeBytes_ = value;
+      break;
+    case HIP_FUNC_ATTRIBUTE_PREFERRED_SHARED_MEMORY_CARVEOUT:
+      break;
+    default:
+      HIP_RETURN(hipErrorInvalidValue);
+  }
+
+  HIP_RETURN(hipSuccess);
+}
+
+hipError_t hipKernelGetFunction(hipFunction_t* pFunc, hipKernel_t kernel) {
+  HIP_INIT_API(hipKernelGetFunction, pFunc, kernel);
+
+  if (pFunc == nullptr || kernel == nullptr) {
+    HIP_RETURN(hipErrorInvalidValue);
+  }
+
+  *pFunc = reinterpret_cast<hipFunction_t>(kernel);
+
+  HIP_RETURN(hipSuccess);
+}
 }  // namespace hip
