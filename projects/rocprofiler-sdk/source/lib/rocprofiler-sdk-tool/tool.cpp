@@ -619,7 +619,7 @@ cntrl_tracing_callback(rocprofiler_callback_tracing_record_t record,
             }
             else if(_ref_count != 0)
             {
-                ROCP_CI_LOG(WARNING) << fmt::format(
+                ROCP_WARNING << fmt::format(
                     "roctxProfilerPause called multiple times without matching "
                     "roctxProfilerResume. # of excess calls to roctxProfilerPause: {}",
                     std::abs(_ref_count));
@@ -662,7 +662,7 @@ cntrl_tracing_callback(rocprofiler_callback_tracing_record_t record,
             }
             else if(_ref_count != 0)
             {
-                ROCP_CI_LOG(WARNING) << fmt::format(
+                ROCP_WARNING << fmt::format(
                     "roctxProfilerResume called multiple times without matching "
                     "roctxProfilerPause. # of excess calls to roctxProfilerResume: {}",
                     std::abs(_ref_count));
