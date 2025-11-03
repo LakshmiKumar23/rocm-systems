@@ -471,11 +471,31 @@ bool linkLLVMBitcode(const comgr_helper::ComgrDataSetUniqueHandle& linkInputs,
     return false;
   }
 
-  if (amd::Comgr::do_action(AMD_COMGR_ACTION_LINK_BC_TO_BC, action.get(), linkInputs.get(),
-                            output.get()) != AMD_COMGR_STATUS_SUCCESS) {
+  // If inputs contain BC_BUNDLE, unbundle first to BC; else link inputs as-is.
+  size_t bundleCount = 0;
+  if (amd::Comgr::action_data_count(linkInputs.get(), AMD_COMGR_DATA_KIND_BC_BUNDLE,
+                                    &bundleCount) != AMD_COMGR_STATUS_SUCCESS) {
     return false;
   }
-
+  if (bundleCount > 1) {
+    ComgrDataSetUniqueHandle unbundleInputs;
+    if (unbundleInputs.Create() != AMD_COMGR_STATUS_SUCCESS) {
+      return false;
+    }
+    if (amd::Comgr::do_action(AMD_COMGR_ACTION_UNBUNDLE, action.get(), linkInputs.get(),
+                              unbundleInputs.get()) != AMD_COMGR_STATUS_SUCCESS) {
+      return false;
+    }
+    if (amd::Comgr::do_action(AMD_COMGR_ACTION_LINK_BC_TO_BC, action.get(), unbundleInputs.get(),
+                              output.get()) != AMD_COMGR_STATUS_SUCCESS) {
+      return false;
+    }
+  } else {
+    if (amd::Comgr::do_action(AMD_COMGR_ACTION_LINK_BC_TO_BC, action.get(), linkInputs.get(),
+                              output.get()) != AMD_COMGR_STATUS_SUCCESS) {
+      return false;
+    }
+  }
   if (!extractBuildLog(output, buildLog)) {
     return false;
   }
@@ -1067,6 +1087,20 @@ bool LinkProgram::AddLinkerDataImpl(std::vector<char>& link_data, hipJitInputTyp
       LogError("Error in hip Linker: Unable to unbundle SPIRV Bitcode");
       return false;
     }
+  } else if (is_bundled_ && input_type == hipJitInputLLVMBundledBitcode) {
+    // Unbundle bundled BC using COMGR when runtime unbundler is disabled
+    if (!findIsa()) {
+      return false;
+    }
+    std::string bundle_entry_id = "hip-" + isa_;
+    const char* bundleEntryIDs[] = {bundle_entry_id.c_str()};
+    size_t bundleEntryIDsCount = 1;
+    if (!helpers::UnbundleUsingComgr(link_data, isa_, link_options_, build_log_, llvm_code_object,
+                                     bundleEntryIDs, bundleEntryIDsCount)) {
+      LogError("Error in hip Linker: Unable to unbundle LLVM Bundled Bitcode using COMGR");
+      return false;
+    }
+    input_type = hipJitInputLLVMBitcode;
   } else {
     llvm_code_object.assign(link_data.begin(), link_data.end());
   }

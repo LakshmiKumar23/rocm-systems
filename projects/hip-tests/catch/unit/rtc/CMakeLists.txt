@@ -27,7 +27,13 @@ set(AMD_TEST_SRC
     hipRtcPtrdiff_t.cc
     hiprtc_Bitcode_UndefinedFn.cc
     hiprtc_bfloat16_HeaderTst.cc
+    bundledbitcode.cc
+    bitcodebundle/bitcodebundle.cc
 )
+
+if(HIP_PLATFORM MATCHES "amd")
+  add_subdirectory(bitcodebundle)
+endif()
 
 add_custom_target(copyRtcHeaders ALL
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -73,3 +79,7 @@ elseif(HIP_PLATFORM MATCHES "amd")
 endif()
 
 add_dependencies(RTC copyRtcHeaders ChkPtrdiff_t_Exe)
+
+if(HIP_PLATFORM MATCHES "amd")
+  add_dependencies(RTC bundle_bitcode)
+endif()
