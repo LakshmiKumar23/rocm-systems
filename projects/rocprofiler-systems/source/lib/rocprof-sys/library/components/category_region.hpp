@@ -274,7 +274,10 @@ category_region<CategoryT>::start(std::string_view name, Args&&... args)
         }
     }
 
-    cache_start<CategoryT>(name.data());
+    if constexpr(!std::is_same_v<CategoryT, category::rocm_marker_api>)
+    {
+        cache_start<CategoryT>(name.data());
+    }
 }
 
 template <typename CategoryT>
@@ -341,7 +344,10 @@ category_region<CategoryT>::stop(std::string_view name, Args&&... args)
             }
         }
 
-        cache_stop<CategoryT>(name.data());
+        if constexpr(!std::is_same_v<CategoryT, category::rocm_marker_api>)
+        {
+            cache_stop<CategoryT>(name.data());
+        }
     }
     else
     {
