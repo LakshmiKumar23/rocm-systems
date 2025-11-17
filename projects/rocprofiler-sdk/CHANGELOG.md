@@ -242,4 +242,4 @@ Full documentation for ROCprofiler-SDK is available at [rocm.docs.amd.com/projec
 ## ROCprofiler-SDK 1.2.0 for ROCm release 7.2
 
 ### Removed
-- Counter collection support for plain text (`.txt`) input files has been removed due to lack of schema validation and input sanitization. Only structured file formats (JSON and YAML) with schema validation are supported.
+- Counter collection support for plain text (`.txt`) input files has been deprecated due to lack of schema validation and input sanitization. Only structured file formats (JSON and YAML) with schema validation are supported.
