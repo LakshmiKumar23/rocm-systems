@@ -419,8 +419,14 @@ PYBIND11_MODULE(libpyrocpd, pyrocpd)
             {
                 auto* conn = rocpd::interop::get_connection(std::move(obj));
 
+                // Suggestions for the future schema updates:
+                // - Add short_description field to provide Perfetto track names via database schema
+                // to eliminate hardcoded mappings.
+                // - Ensure rocpd_info_pmc is properly joinable with rocpd_sample to facilitate unit
+                // type retrieval per track and not per each event as it is in the current schema
+                // version.
                 const std::string create_samples_view = R"(
-                            CREATE TEMP VIEW
+                            CREATE TEMP VIEW IF NOT EXISTS
                                 `samples_schema_3_0` AS
                             SELECT
                                 R.id,
@@ -494,7 +500,7 @@ PYBIND11_MODULE(libpyrocpd, pyrocpd)
                 execute_raw_sql_statements(conn, create_samples_view);
 
                 const std::string create_pmc_event_view = R"(
-                            CREATE TEMP VIEW
+                            CREATE TEMP VIEW IF NOT EXISTS
                                 `pmc_events_schema_3_0` AS
                             SELECT
                                 PMC_E.id,

@@ -258,6 +258,8 @@ write_perfetto(
                            std::unordered_map<rocprofiler_queue_id_t, ::perfetto::Track>>{};
     auto stream_tracks = std::unordered_map<rocprofiler_stream_id_t, ::perfetto::Track>{};
 
+    uint64_t global_flow_index = 0;
+
     {
         for(auto ditr : memory_copy_gen)
             for(const auto& itr : memory_copy_gen.get(ditr))
@@ -445,7 +447,7 @@ write_perfetto(
                                   ::perfetto::DynamicString{_name},
                                   track,
                                   itr.start,
-                                  ::perfetto::Flow::Global(itr.stack_id ^ this_pid_track.uuid),
+                                  ::perfetto::Flow::Global(++global_flow_index),
                                   "begin_ns",
                                   itr.start,
                                   "end_ns",
@@ -491,7 +493,7 @@ write_perfetto(
                                   ::perfetto::DynamicString{itr.name},
                                   *_track,
                                   itr.start,
-                                  ::perfetto::Flow::Global(itr.stack_id ^ this_pid_track.uuid),
+                                  ::perfetto::Flow::Global(++global_flow_index),
                                   "begin_ns",
                                   itr.start,
                                   "end_ns",
@@ -663,7 +665,7 @@ write_perfetto(
                                   ::perfetto::DynamicString{_name},
                                   *_track,
                                   current.start,
-                                  ::perfetto::Flow::Global(current.stack_id ^ this_pid_track.uuid),
+                                  ::perfetto::Flow::Global(++global_flow_index),
                                   "begin_ns",
                                   current.start,
                                   "end_ns",
