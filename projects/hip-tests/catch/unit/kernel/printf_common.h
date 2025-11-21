@@ -79,10 +79,12 @@ class CaptureStream {
     int bytesRead = 0;
     bytesRead = read(pipe[READ], &buf, bufSize);
     
-    if (bytesRead > 0) {
-      result = std::string(buf, bytesRead);
-    } else {
+    if (bytesRead < 0) {
+      error(0, errno, "Error reading from pipe");
+      assert(false);
       result.clear();
+    } else {
+      result = std::string(buf, bytesRead);
     }
   }
 
