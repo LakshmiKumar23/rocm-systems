@@ -59,7 +59,6 @@ TEST_CASE("Unit_kernel_ChkPrintf", "[multigpu]") {
     HIP_CHECK(hipDeviceSynchronize());
     capture.endCapture();
 
-
     auto CapturedData = capture.getCapturedData();
     int result = check.compare(CapturedData);
     REQUIRE(result == 0);
