@@ -111,7 +111,7 @@ jobs:
           SITE_NAME="${{ matrix.system.runner }}"
 
           PATH=${{ env.ROCM_PATH }}/bin:${{ env.ROCM_PATH }}/llvm/bin:$PATH \
-          LD_LIBRARY_PATH=${{ env.ROCM_PATH }}/lib:${{ env.ROCM_PATH }}/llvm/lib:$LD_LIBRARY_PATH \
+          LD_LIBRARY_PATH=${{ env.ROCM_PATH }}/lib/rocprofiler-sdk:${{ env.ROCM_PATH }}/lib:${{ env.ROCM_PATH }}/llvm/lib:$LD_LIBRARY_PATH \
           python3 ./tools/run-ci.py \
             --build-name "${BUILD_NAME}" \
             --site "${SITE_NAME}" \
