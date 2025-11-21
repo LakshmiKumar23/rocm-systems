@@ -77,10 +77,13 @@ class CaptureStream {
     const int bufSize = 2048;
     char buf[bufSize];
     int bytesRead = 0;
-    if (pipe[READ] != EOF) {
-      bytesRead = read(pipe[READ], &buf, bufSize);
+    bytesRead = read(pipe[READ], &buf, bufSize);
+    
+    if (bytesRead > 0) {
+      result = std::string(buf, bytesRead);
+    } else {
+      result.clear();
     }
-    result = std::string(buf, bytesRead);
   }
 
   std::string getCapturedData() { return result; }
