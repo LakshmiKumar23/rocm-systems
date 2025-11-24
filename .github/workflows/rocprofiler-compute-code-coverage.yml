@@ -13,7 +13,7 @@ on:
 
 env:
   ROCM_PATH: "/opt/rocm"
-  ROCM_VERSION: "7.2.0"
+  ROCM_VERSION: "7.0.2"
 
 jobs:
   prepare_matrix:
@@ -99,6 +99,9 @@ jobs:
 
       - name: Debug ROCm Installation
         run: |
+          echo "=== Checking for ROCm tarballs in /opt ==="
+          ls -lh /opt/*.tar.gz 2>/dev/null || echo "No tarballs found in /opt/"
+          echo ""
           echo "=== Checking for librocprofv3-list-avail.so ==="
           find /opt/rocm -name "librocprofv3-list-avail.so*" 2>/dev/null || echo "File not found!"
           echo ""
