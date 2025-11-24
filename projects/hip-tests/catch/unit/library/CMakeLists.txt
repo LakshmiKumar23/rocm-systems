@@ -34,4 +34,4 @@ else()
   target_link_libraries(LibraryTests cuda)
 endif()
 
-#add_dependencies(LibraryTests library_code_load.code)
+add_dependencies(LibraryTests library_code_load.code)
