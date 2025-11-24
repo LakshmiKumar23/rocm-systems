@@ -85,23 +85,16 @@ jobs:
           apt install -y libopenmpi-dev
           echo "✅ MPI Installed!"
 
-      - name: Install ROCm from Tarball
+      - name: Install Latest Nightly ROCm
         run: |
           set -e
-          echo "=== Extracting ROCm tarball ==="
-          TARBALL=$(ls /opt/rocm-*.tar.gz | head -1)
-          echo "Found tarball: ${TARBALL}"
-
-          # Extract tarball to versioned directory
+          TARBALL_ROCM_VERSION=$(ls /opt/*.tar.gz | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "Found tarball version: ${TARBALL_ROCM_VERSION}"
           mkdir -p ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }}
-          tar -xf ${TARBALL} -C ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} --strip-components=1
-
-          # Create symlink
-          ln -sf ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} ${{ env.ROCM_PATH }}
-
-          echo "✅ ROCm Installation Complete!"
+          tar -xf ${{ env.ROCM_PATH }}-${TARBALL_ROCM_VERSION}-${{ matrix.system.arch }}.tar.gz -C ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }}
+          ln -s ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} ${{ env.ROCM_PATH }}
           echo "ROCm installed to: ${{ env.ROCM_PATH }}"
-          ls -la ${{ env.ROCM_PATH }}/lib/rocprofiler-sdk/ || echo "rocprofiler-sdk dir check failed"
+          echo "✅ ROCm Installation Complete!"
 
       - name: Install Python Dependencies
         working-directory: projects/rocprofiler-compute
@@ -146,7 +139,7 @@ jobs:
           SITE_NAME="${{ matrix.system.runner }}"
 
           PATH=${{ env.ROCM_PATH }}/bin:${{ env.ROCM_PATH }}/llvm/bin:$PATH \
-          LD_LIBRARY_PATH=${{ env.ROCM_PATH }}/lib/rocprofiler-sdk:${{ env.ROCM_PATH }}/lib:${{ env.ROCM_PATH }}/llvm/lib:/lib/rocm_sysdeps/lib:$LD_LIBRARY_PATH \
+          LD_LIBRARY_PATH=${{ env.ROCM_PATH }}/lib:${{ env.ROCM_PATH }}/llvm/lib:${{ env.ROCM_PATH }}/lib/rocm_sysdeps/lib:$LD_LIBRARY_PATH \
           python3 ./tools/run-ci.py \
             --build-name "${BUILD_NAME}" \
             --site "${SITE_NAME}" \
