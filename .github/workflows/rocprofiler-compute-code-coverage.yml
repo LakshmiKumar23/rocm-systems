@@ -85,10 +85,23 @@ jobs:
           apt install -y libopenmpi-dev
           echo "✅ MPI Installed!"
 
-      - name: Install ROCm
+      - name: Install ROCm from Tarball
         run: |
-          apt install -y rocm-dev
+          set -e
+          echo "=== Extracting ROCm tarball ==="
+          TARBALL=$(ls /opt/rocm-*.tar.gz | head -1)
+          echo "Found tarball: ${TARBALL}"
+
+          # Extract tarball to versioned directory
+          mkdir -p ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }}
+          tar -xf ${TARBALL} -C ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} --strip-components=1
+
+          # Create symlink
+          ln -sf ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} ${{ env.ROCM_PATH }}
+
           echo "✅ ROCm Installation Complete!"
+          echo "ROCm installed to: ${{ env.ROCM_PATH }}"
+          ls -la ${{ env.ROCM_PATH }}/lib/rocprofiler-sdk/ || echo "rocprofiler-sdk dir check failed"
 
       - name: Install Python Dependencies
         working-directory: projects/rocprofiler-compute
@@ -97,25 +110,26 @@ jobs:
           pip install -r requirements-test.txt --break-system-packages --ignore-installed
           echo "✅ Python dependencies installed!"
 
-      - name: Debug ROCm Installation
+      - name: Verify ROCm Installation
         run: |
-          echo "=== Checking for ROCm tarballs in /opt ==="
-          ls -lh /opt/*.tar.gz 2>/dev/null || echo "No tarballs found in /opt/"
+          echo "=== ROCm Version ==="
+          ${{ env.ROCM_PATH }}/bin/rocminfo --version 2>/dev/null || echo "rocminfo not found"
           echo ""
           echo "=== Checking for librocprofv3-list-avail.so ==="
-          find /opt/rocm -name "librocprofv3-list-avail.so*" 2>/dev/null || echo "File not found!"
+          find ${{ env.ROCM_PATH }} -name "librocprofv3-list-avail.so*" 2>/dev/null || echo "File not found!"
           echo ""
           echo "=== Checking rocprofiler-sdk directory ==="
-          ls -la /opt/rocm/lib/rocprofiler-sdk/ 2>/dev/null || echo "Directory doesn't exist!"
+          ls -la ${{ env.ROCM_PATH }}/lib/rocprofiler-sdk/
           echo ""
-          echo "=== Checking for any rocprofv3 libraries ==="
-          find /opt/rocm -name "*rocprofv3*" -type f 2>/dev/null | head -20
+          echo "=== Checking rocm_sysdeps directory ==="
+          ls -la /lib/rocm_sysdeps/lib/ 2>/dev/null || echo "rocm_sysdeps directory not found"
           echo ""
-          echo "=== Checking if file exists and its dependencies ==="
-          if [ -f /opt/rocm/lib/rocprofiler-sdk/librocprofv3-list-avail.so ]; then
-            ldd /opt/rocm/lib/rocprofiler-sdk/librocprofv3-list-avail.so
+          echo "=== Checking if librocprofv3-list-avail.so exists and dependencies ==="
+          if [ -f ${{ env.ROCM_PATH }}/lib/rocprofiler-sdk/librocprofv3-list-avail.so ]; then
+            echo "✅ File exists!"
+            ldd ${{ env.ROCM_PATH }}/lib/rocprofiler-sdk/librocprofv3-list-avail.so
           else
-            echo "File does not exist at expected location"
+            echo "❌ File does not exist"
           fi
 
       - name: Configure, Build, Test, and Upload Coverage
@@ -132,7 +146,7 @@ jobs:
           SITE_NAME="${{ matrix.system.runner }}"
 
           PATH=${{ env.ROCM_PATH }}/bin:${{ env.ROCM_PATH }}/llvm/bin:$PATH \
-          LD_LIBRARY_PATH=${{ env.ROCM_PATH }}/lib/rocprofiler-sdk:${{ env.ROCM_PATH }}/lib:${{ env.ROCM_PATH }}/llvm/lib:$LD_LIBRARY_PATH \
+          LD_LIBRARY_PATH=${{ env.ROCM_PATH }}/lib/rocprofiler-sdk:${{ env.ROCM_PATH }}/lib:${{ env.ROCM_PATH }}/llvm/lib:/lib/rocm_sysdeps/lib:$LD_LIBRARY_PATH \
           python3 ./tools/run-ci.py \
             --build-name "${BUILD_NAME}" \
             --site "${SITE_NAME}" \
