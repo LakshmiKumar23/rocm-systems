@@ -88,13 +88,26 @@ jobs:
       - name: Install Latest Nightly ROCm
         run: |
           set -e
+          echo "=== Looking for tarball ==="
+          ls -lh /opt/*.tar.gz
+
           TARBALL_ROCM_VERSION=$(ls /opt/*.tar.gz | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
           echo "Found tarball version: ${TARBALL_ROCM_VERSION}"
+          echo "Tarball path will be: ${{ env.ROCM_PATH }}-${TARBALL_ROCM_VERSION}-${{ matrix.system.arch }}.tar.gz"
+          echo "Extract to: ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }}"
+
           mkdir -p ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }}
+          echo "Extracting tarball..."
           tar -xf ${{ env.ROCM_PATH }}-${TARBALL_ROCM_VERSION}-${{ matrix.system.arch }}.tar.gz -C ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }}
+
+          echo "Creating symlink..."
           ln -s ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} ${{ env.ROCM_PATH }}
-          echo "ROCm installed to: ${{ env.ROCM_PATH }}"
+
+          echo "Verifying extraction..."
+          ls -la ${{ env.ROCM_PATH }}/
+
           echo "✅ ROCm Installation Complete!"
+          echo "ROCm installed to: ${{ env.ROCM_PATH }}"
 
       - name: Install Python Dependencies
         working-directory: projects/rocprofiler-compute
