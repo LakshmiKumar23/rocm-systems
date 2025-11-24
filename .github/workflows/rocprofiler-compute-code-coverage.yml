@@ -13,7 +13,7 @@ on:
 
 env:
   ROCM_PATH: "/opt/rocm"
-  ROCM_VERSION: "7.0.2"
+  ROCM_VERSION: "7.2.0"
 
 jobs:
   prepare_matrix:
