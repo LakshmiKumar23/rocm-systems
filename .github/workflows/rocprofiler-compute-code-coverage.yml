@@ -97,6 +97,24 @@ jobs:
           pip install -r requirements-test.txt --break-system-packages --ignore-installed
           echo "✅ Python dependencies installed!"
 
+      - name: Debug ROCm Installation
+        run: |
+          echo "=== Checking for librocprofv3-list-avail.so ==="
+          find /opt/rocm -name "librocprofv3-list-avail.so*" 2>/dev/null || echo "File not found!"
+          echo ""
+          echo "=== Checking rocprofiler-sdk directory ==="
+          ls -la /opt/rocm/lib/rocprofiler-sdk/ 2>/dev/null || echo "Directory doesn't exist!"
+          echo ""
+          echo "=== Checking for any rocprofv3 libraries ==="
+          find /opt/rocm -name "*rocprofv3*" -type f 2>/dev/null | head -20
+          echo ""
+          echo "=== Checking if file exists and its dependencies ==="
+          if [ -f /opt/rocm/lib/rocprofiler-sdk/librocprofv3-list-avail.so ]; then
+            ldd /opt/rocm/lib/rocprofiler-sdk/librocprofv3-list-avail.so
+          else
+            echo "File does not exist at expected location"
+          fi
+
       - name: Configure, Build, Test, and Upload Coverage
         id: run_coverage
         timeout-minutes: 120
