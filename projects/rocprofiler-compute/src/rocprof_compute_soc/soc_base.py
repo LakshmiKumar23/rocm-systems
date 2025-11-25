@@ -440,6 +440,15 @@ class OmniSoC_Base:
         avail.loadLibrary.libname = str(
             Path(args.rocprofiler_sdk_tool_path).parent / "librocprofv3-list-avail.so"
         )
+
+        # Ensure ROCm library paths are in LD_LIBRARY_PATH for ctypes.CDLL
+        rocm_lib_path = str(Path(args.rocprofiler_sdk_tool_path).parent.parent)
+        if "LD_LIBRARY_PATH" in os.environ:
+            current_path = os.environ["LD_LIBRARY_PATH"]
+            os.environ["LD_LIBRARY_PATH"] = f"{rocm_lib_path}:{current_path}"
+        else:
+            os.environ["LD_LIBRARY_PATH"] = rocm_lib_path
+
         counters = avail.get_counters()
         rocprof_counters = {
             counter.name
