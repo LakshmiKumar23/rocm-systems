@@ -442,7 +442,7 @@ class OmniSoC_Base:
         )
 
         # Ensure ROCm library paths are in LD_LIBRARY_PATH for ctypes.CDLL
-        rocm_lib_path = str(Path(args.rocprofiler_sdk_tool_path).parent.parent)
+        rocm_lib_path = str(Path(args.rocprofiler_sdk_tool_path).parent)
         if "LD_LIBRARY_PATH" in os.environ:
             current_path = os.environ["LD_LIBRARY_PATH"]
             os.environ["LD_LIBRARY_PATH"] = f"{rocm_lib_path}:{current_path}"
