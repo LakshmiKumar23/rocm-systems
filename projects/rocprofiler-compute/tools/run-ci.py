@@ -65,14 +65,9 @@ def generate_ctest_dashboard_script(args, source_dir, binary_dir):
     - Submit to CDash
     """
 
-    cache_entries = [
-        "CMAKE_BUILD_TYPE:STRING=Release",
-        f"CMAKE_PREFIX_PATH:PATH={os.environ.get('ROCM_PATH', '/opt/rocm')}",
-        "ENABLE_TESTS:BOOL=ON",
-        "INSTALL_TESTS:BOOL=ON",
-        "ENABLE_COVERAGE:BOOL=ON",
-        f"PYTEST_NUMPROCS:STRING={args.pytest_numprocs}",
-    ]
+    cmake_args_str = ""
+    if args.cmake_args:
+        cmake_args_str = " " + " ".join(args.cmake_args)
 
     test_args = ""
     if args.ctest_args:
@@ -112,7 +107,7 @@ set(CTEST_CMAKE_GENERATOR "Unix Makefiles")
 set(CTEST_BUILD_CONFIGURATION "Release")
 
 # Config CMake command with all required options
-set(CTEST_CONFIGURE_COMMAND "cmake -B ${{CTEST_BINARY_DIRECTORY}} ${{CTEST_SOURCE_DIRECTORY}} -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH={os.environ.get("ROCM_PATH", "/opt/rocm")} -DENABLE_TESTS=ON -DINSTALL_TESTS=ON -DENABLE_COVERAGE=ON -DPYTEST_NUMPROCS={args.pytest_numprocs}")
+set(CTEST_CONFIGURE_COMMAND "cmake -B ${{CTEST_BINARY_DIRECTORY}} ${{CTEST_SOURCE_DIRECTORY}}{cmake_args_str}")
 
 message(STATUS "CMake configure command: ${{CTEST_CONFIGURE_COMMAND}}")
 
@@ -305,6 +300,21 @@ def main():
 
     args.cmake_args = []
     args.ctest_args = []
+
+    if unknown:
+        try:
+            first_sep = unknown.index("--")
+            args.cmake_args = unknown[:first_sep]
+            remaining = unknown[first_sep + 1:]
+
+            if "--" in remaining:
+                second_sep = remaining.index("--")
+                args.cmake_args.extend(remaining[:second_sep])
+                args.ctest_args = remaining[second_sep + 1:]
+            else:
+                args.cmake_args.extend(remaining)
+        except ValueError:
+            args.cmake_args = unknown
 
     is_monorepo, monorepo_root, project_root = detect_repo_structure()
 

@@ -77,17 +77,16 @@ jobs:
           wget -N -P /tmp/ https://repo.radeon.com/amdgpu-install/${ROCM_MAJOR}.${ROCM_MINOR}/ubuntu/${{ matrix.system.code-name }}/amdgpu-install_${ROCM_MAJOR}.${ROCM_MINOR}.${ROCM_VERSN}-1_all.deb
           apt-get install -y /tmp/amdgpu-install_${ROCM_MAJOR}.${ROCM_MINOR}.${ROCM_VERSN}-1_all.deb
           apt-get update
-          apt install -y amd-smi-lib libdw-dev
-          echo "✅ amdgpu and dependencies Installed!"
+          apt install -y amd-smi-lib libdw-dev hip-dev
+          echo "✅ amdgpu and ROCm dependencies Installed!"
 
-      - name: Install MPI
+      - name: Install Latest Nightly ROCm
         run: |
-          apt install -y libopenmpi-dev
-          echo "✅ MPI Installed!"
-
-      - name: Install ROCm
-        run: |
-          apt install -y rocm-dev
+          set -e
+          TARBALL_ROCM_VERSION=$(ls /opt/*.tar.gz | grep -Eo '*([0-9]+\.[0-9]+\.[0-9]+)*')
+          tar -xf ${{ env.ROCM_PATH }}-${TARBALL_ROCM_VERSION}-${{ matrix.system.arch }}.tar.gz -C ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }}
+          ln -s ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} ${{ env.ROCM_PATH }}
+          echo "ROCm installed to: ${{ env.ROCM_PATH }}"
           echo "✅ ROCm Installation Complete!"
 
       - name: Install Python Dependencies
@@ -101,24 +100,25 @@ jobs:
         id: run_coverage
         timeout-minutes: 120
         working-directory: projects/rocprofiler-compute
-        continue-on-error: true
         run: |
           set -e
           git config --global --add safe.directory ${GITHUB_WORKSPACE}
           git config --global --add safe.directory ${PWD}
 
-          BUILD_NAME="ROCm/rocprofiler-compute-${{ github.ref_name }}-ubuntu-${{ matrix.system.os-release }}-${{ matrix.system.gpu }}"
-          SITE_NAME="${{ matrix.system.runner }}"
-
           PATH=${{ env.ROCM_PATH }}/bin:${{ env.ROCM_PATH }}/llvm/bin:$PATH \
-          LD_LIBRARY_PATH=/opt/rocm/lib/rocprofiler-sdk:/opt/rocm/lib:/opt/rocm/llvm/lib:$LD_LIBRARY_PATH \
+          LD_LIBRARY_PATH=${{ env.ROCM_PATH }}/lib:${{ env.ROCM_PATH }}/llvm/lib:${{ env.ROCM_PATH }}/lib/rocm_sysdeps/lib:$LD_LIBRARY_PATH \
           python3 ./tools/run-ci.py \
-            --build-name "${BUILD_NAME}" \
-            --site "${SITE_NAME}" \
+            --name "ROCm/rocprofiler-compute-${{ github.ref_name }}-ubuntu-${{ matrix.system.os-release }}-${{ matrix.system.gpu }}" \
+            --site "${{ matrix.system.runner }}" \
             --mode "Nightly" \
             --build-jobs 16 \
-            --pytest-numprocs 8 \
-            --install
+            -- \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=${{ env.ROCM_PATH }} \
+            -DENABLE_TESTS=ON \
+            -DINSTALL_TESTS=ON \
+            -DENABLE_COVERAGE=ON \
+            -DPYTEST_NUMPROCS=8
 
       - name: Check Coverage Configuration
         if: always()
@@ -145,6 +145,13 @@ jobs:
           else
             echo "❌ build/CMakeCache.txt not found - build may have failed!"
           fi
+
+      - name: Output Logs
+        if: failure() && steps.run_coverage.outcome == 'failure'
+        working-directory: projects/rocprofiler-compute
+        run: |
+          echo "❌ Run Failed: Now outputting LastTest.log files for detailed logs..."
+          cat build/Testing/Temporary/LastTest*.log
 
       - name: Upload Logs on Failure
         if: failure()
