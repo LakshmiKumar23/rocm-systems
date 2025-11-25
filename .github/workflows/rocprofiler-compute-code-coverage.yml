@@ -13,7 +13,7 @@ on:
 
 env:
   ROCM_PATH: "/opt/rocm"
-  ROCM_VERSION: "7.0.2"
+  ROCM_VERSION: "7.0.0"
 
 jobs:
   prepare_matrix:
@@ -62,19 +62,20 @@ jobs:
         with:
           sparse-checkout: projects/rocprofiler-compute/
 
-      - name: Update system packages
-        run: |
-          apt-get update
-          apt-get dist-upgrade -y
-          echo "✅ System packages updated!"
-
       - name: Install amdgpu and dependencies
         shell: bash
         run: |
           ROCM_MAJOR=$(echo ${{ env.ROCM_VERSION }} | sed 's/\./ /g' | awk '{print $1}')
           ROCM_MINOR=$(echo ${{ env.ROCM_VERSION }} | sed 's/\./ /g' | awk '{print $2}')
           ROCM_VERSN=$(( (${ROCM_MAJOR}*10000)+(${ROCM_MINOR}*100) ))
-          wget -N -P /tmp/ https://repo.radeon.com/amdgpu-install/${ROCM_MAJOR}.${ROCM_MINOR}/ubuntu/${{ matrix.system.code-name }}/amdgpu-install_${ROCM_MAJOR}.${ROCM_MINOR}.${ROCM_VERSN}-1_all.deb
+
+          if [ '${{ matrix.system.os-release }}' = '24.04' ]; then
+            CODE_NAME=noble
+          else
+            CODE_NAME=jammy
+          fi
+
+          wget -N -P /tmp/ https://repo.radeon.com/amdgpu-install/${ROCM_MAJOR}.${ROCM_MINOR}/ubuntu/${CODE_NAME}/amdgpu-install_${ROCM_MAJOR}.${ROCM_MINOR}.${ROCM_VERSN}-1_all.deb
           apt-get install -y /tmp/amdgpu-install_${ROCM_MAJOR}.${ROCM_MINOR}.${ROCM_VERSN}-1_all.deb
           apt-get update
           apt install -y amd-smi-lib libdw-dev hip-dev
@@ -83,9 +84,11 @@ jobs:
       - name: Install Latest Nightly ROCm
         run: |
           set -e
-          TARBALL_ROCM_VERSION=$(ls /opt/*.tar.gz | grep -Eo '*([0-9]+\.[0-9]+\.[0-9]+)*')
-          tar -xf ${{ env.ROCM_PATH }}-${TARBALL_ROCM_VERSION}-${{ matrix.system.arch }}.tar.gz -C ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }}
-          ln -s ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} ${{ env.ROCM_PATH }}
+          TARBALL_ROCM_VERSION=$(ls /opt/*.tar.gz | grep -oP '([0-9]+\.[0-9]+\.[0-9]+)')
+          echo "Found ROCm tarball version: ${TARBALL_ROCM_VERSION}"
+          mkdir -p ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }}
+          tar -xf /opt/rocm-${TARBALL_ROCM_VERSION}-${{ matrix.system.arch }}.tar.gz -C ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} --strip-components=1
+          ln -sfn ${{ env.ROCM_PATH }}-${{ env.ROCM_VERSION }} ${{ env.ROCM_PATH }}
           echo "ROCm installed to: ${{ env.ROCM_PATH }}"
           echo "✅ ROCm Installation Complete!"
 
