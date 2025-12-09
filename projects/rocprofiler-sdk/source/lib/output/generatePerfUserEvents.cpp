@@ -22,6 +22,7 @@
 
 #include "generatePerfUserEvents.hpp"
 #include "lib/common/logging.hpp"
+#include "amdgpu_pmu_uapi.h"
 
 #include <fcntl.h>
 #include <linux/user_events.h>
@@ -31,6 +32,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <vector>
 
 namespace rocprofiler
 {
@@ -92,6 +94,10 @@ static user_event_info g_kernel_dispatch_event;
 static user_event_info g_hsa_api_event;
 static user_event_info g_hip_api_event;
 
+// Global state for kernel tracepoints (preferred)
+static int  g_kernel_trace_fd          = -1;
+static bool g_use_kernel_tracepoints   = false;
+
 // Helper function to register a user event
 static bool
 register_user_event(user_event_info& info, const char* event_def, const char* event_name)
@@ -140,11 +146,62 @@ register_user_event(user_event_info& info, const char* event_def, const char* ev
     return true;
 }
 
+// Helper function to initialize kernel tracepoints
+static bool
+init_kernel_tracepoints()
+{
+    g_kernel_trace_fd = open("/dev/amdgpu_pmu_trace", O_RDWR);
+    if(g_kernel_trace_fd >= 0)
+    {
+        // Query version for compatibility
+        uint32_t version = 0;
+        if(ioctl(g_kernel_trace_fd, AMDGPU_PMU_IOCTL_GET_VERSION, &version) == 0)
+        {
+            if(version == AMDGPU_PMU_TRACE_VERSION)
+            {
+                g_use_kernel_tracepoints = true;
+                ROCP_INFO << "Using kernel tracepoints via /dev/amdgpu_pmu_trace (version "
+                          << version << ")";
+                return true;
+            }
+            else
+            {
+                ROCP_WARNING << "Kernel tracepoint version mismatch (expected "
+                             << AMDGPU_PMU_TRACE_VERSION << ", got " << version
+                             << "). Falling back to user_events.";
+                close(g_kernel_trace_fd);
+                g_kernel_trace_fd = -1;
+            }
+        }
+        else
+        {
+            ROCP_WARNING << "Failed to query kernel tracepoint version. "
+                         << "Falling back to user_events.";
+            close(g_kernel_trace_fd);
+            g_kernel_trace_fd = -1;
+        }
+    }
+
+    ROCP_INFO << "Kernel tracepoints not available (/dev/amdgpu_pmu_trace not found). "
+              << "Falling back to user_events.";
+    return false;
+}
+
 }  // namespace
 
 bool
 init_perf_user_events()
 {
+    // Try kernel tracepoints first (preferred - persistent, no race conditions)
+    if(init_kernel_tracepoints())
+    {
+        return true;
+    }
+
+    // Fall back to user_events (ephemeral - requires perf to start after rocprofv3)
+    ROCP_INFO << "Using user_events (ephemeral tracepoints). "
+              << "Note: perf must be started AFTER rocprofv3 starts.";
+
     // Define event schemas
     const char* kernel_dispatch_def =
         "rocprof_kernel_dispatch u64 dispatch_id; u64 correlation_id; "
@@ -171,6 +228,14 @@ init_perf_user_events()
 void
 cleanup_perf_user_events()
 {
+    // Cleanup kernel tracepoint device
+    if(g_kernel_trace_fd >= 0)
+    {
+        close(g_kernel_trace_fd);
+        g_kernel_trace_fd = -1;
+    }
+    g_use_kernel_tracepoints = false;
+
     // Cleanup kernel dispatch event
     if(g_kernel_dispatch_event.fd >= 0)
     {
@@ -199,15 +264,101 @@ cleanup_perf_user_events()
     g_hip_api_event.enable_storage = 0;
 }
 
-void
-write_perf_user_events(
-    const output_config&                                               cfg,
-    const metadata&                                                    tool_metadata,
+// Helper: Write kernel dispatch events via kernel tracepoints (batch mode)
+static void
+write_kernel_dispatch_via_kernel(
     const generator<tool_buffer_tracing_kernel_dispatch_ext_record_t>& kernel_dispatch_gen)
 {
-    (void) cfg;
-    (void) tool_metadata;
+    if(g_kernel_trace_fd < 0)
+    {
+        ROCP_WARNING << "Kernel trace device not available";
+        return;
+    }
 
+    // Check if tracepoint is enabled
+    uint32_t enabled = 0;
+    if(ioctl(g_kernel_trace_fd, AMDGPU_PMU_IOCTL_QUERY_ENABLED, &enabled) == 0)
+    {
+        if((enabled & (1 << AMDGPU_PMU_EVENT_KERNEL_DISPATCH)) == 0)
+        {
+            ROCP_WARNING << "Kernel dispatch tracepoint not enabled. "
+                         << "Start perf record with -e amdgpu_pmu:kernel_dispatch";
+            return;
+        }
+    }
+
+    ROCP_INFO << "Writing kernel dispatch events via kernel tracepoints...";
+
+    // Collect all events into a vector for batch emission
+    std::vector<amdgpu_pmu_kernel_dispatch> events;
+    uint64_t                                total_records = 0;
+
+    for(auto ditr : kernel_dispatch_gen)
+    {
+        for(const auto& record : kernel_dispatch_gen.get(ditr))
+        {
+            total_records++;
+
+            amdgpu_pmu_kernel_dispatch ev = {};
+            ev.dispatch_id                = record.dispatch_info.dispatch_id;
+            ev.correlation_id             = record.correlation_id.internal;
+            ev.kernel_id                  = record.dispatch_info.kernel_id;
+            ev.start_ts                   = record.start_timestamp;
+            ev.end_ts                     = record.end_timestamp;
+            ev.agent_id                   = record.dispatch_info.agent_id.handle;
+            ev.queue_id                   = record.dispatch_info.queue_id.handle;
+            ev.grid_x                     = record.dispatch_info.grid_size.x;
+            ev.grid_y                     = record.dispatch_info.grid_size.y;
+            ev.grid_z                     = record.dispatch_info.grid_size.z;
+
+            // Pack workgroup size: wg_x | (wg_y << 10) | (wg_z << 20)
+            uint32_t wg_x        = record.dispatch_info.workgroup_size.x & 0x3FF;  // 10 bits
+            uint32_t wg_y        = record.dispatch_info.workgroup_size.y & 0x3FF;  // 10 bits
+            uint32_t wg_z        = record.dispatch_info.workgroup_size.z & 0xFFF;  // 12 bits
+            ev.workgroup_size    = wg_x | (wg_y << 10) | (wg_z << 20);
+
+            events.push_back(ev);
+        }
+    }
+
+    if(events.empty())
+    {
+        ROCP_INFO << "No kernel dispatch events to emit";
+        return;
+    }
+
+    // Emit events in batches to respect kernel limit
+    uint64_t event_count = 0;
+    for(size_t offset = 0; offset < events.size(); offset += AMDGPU_PMU_MAX_BATCH_SIZE)
+    {
+        size_t batch_size = std::min(static_cast<size_t>(AMDGPU_PMU_MAX_BATCH_SIZE),
+                                     events.size() - offset);
+
+        struct amdgpu_pmu_emit_events batch = {};
+        batch.event_type                    = AMDGPU_PMU_EVENT_KERNEL_DISPATCH;
+        batch.count                         = batch_size;
+        batch.events_ptr = reinterpret_cast<uint64_t>(events.data() + offset);
+
+        if(ioctl(g_kernel_trace_fd, AMDGPU_PMU_IOCTL_EMIT_BATCH, &batch) == 0)
+        {
+            event_count += batch_size;
+        }
+        else
+        {
+            ROCP_WARNING << "Failed to emit batch (offset=" << offset << ", size=" << batch_size
+                         << "): " << strerror(errno);
+        }
+    }
+
+    ROCP_INFO << "Wrote " << event_count << " of " << total_records
+              << " kernel dispatch events via kernel tracepoints";
+}
+
+// Helper: Write kernel dispatch events via user_events (original behavior)
+static void
+write_kernel_dispatch_via_user_events(
+    const generator<tool_buffer_tracing_kernel_dispatch_ext_record_t>& kernel_dispatch_gen)
+{
     if(!g_kernel_dispatch_event.initialized.load() || g_kernel_dispatch_event.fd < 0)
     {
         ROCP_WARNING << "Perf user_event 'rocprof_kernel_dispatch' not initialized.";
@@ -225,7 +376,7 @@ write_perf_user_events(
         return;
     }
 
-    ROCP_INFO << "Tracepoint enabled, writing kernel dispatch events...";
+    ROCP_INFO << "Writing kernel dispatch events via user_events...";
 
     // Iterate through kernel dispatch records and emit events
     uint64_t event_count   = 0;
@@ -255,7 +406,8 @@ write_perf_user_events(
 
             // Write event using writev
             struct iovec iov[2] = {
-                {&g_kernel_dispatch_event.write_index, sizeof(g_kernel_dispatch_event.write_index)},
+                {&g_kernel_dispatch_event.write_index,
+                 sizeof(g_kernel_dispatch_event.write_index)},
                 {&evt, sizeof(evt)}};
 
             ssize_t ret = writev(g_kernel_dispatch_event.fd, iov, 2);
@@ -275,17 +427,127 @@ write_perf_user_events(
     }
 
     ROCP_INFO << "Wrote " << event_count << " of " << total_records
-              << " kernel dispatch events to perf user_events";
+              << " kernel dispatch events via user_events";
 }
 
 void
-write_hsa_api_events(const output_config&                                          cfg,
-                     const metadata&                                               tool_metadata,
-                     const generator<rocprofiler_buffer_tracing_hsa_api_record_t>& hsa_api_gen)
+write_perf_user_events(
+    const output_config&                                               cfg,
+    const metadata&                                                    tool_metadata,
+    const generator<tool_buffer_tracing_kernel_dispatch_ext_record_t>& kernel_dispatch_gen)
 {
     (void) cfg;
     (void) tool_metadata;
 
+    if(g_use_kernel_tracepoints)
+    {
+        write_kernel_dispatch_via_kernel(kernel_dispatch_gen);
+    }
+    else
+    {
+        write_kernel_dispatch_via_user_events(kernel_dispatch_gen);
+    }
+}
+
+// Helper: Write HSA API events via kernel tracepoints (batch mode)
+static void
+write_hsa_api_via_kernel(
+    const generator<rocprofiler_buffer_tracing_hsa_api_record_t>& hsa_api_gen)
+{
+    if(g_kernel_trace_fd < 0)
+    {
+        ROCP_WARNING << "Kernel trace device not available";
+        return;
+    }
+
+    // Check if tracepoint is enabled
+    uint32_t enabled = 0;
+    if(ioctl(g_kernel_trace_fd, AMDGPU_PMU_IOCTL_QUERY_ENABLED, &enabled) == 0)
+    {
+        if((enabled & (1 << AMDGPU_PMU_EVENT_HSA_API)) == 0)
+        {
+            ROCP_WARNING << "HSA API tracepoint not enabled. "
+                         << "Start perf record with -e amdgpu_pmu:hsa_api";
+            return;
+        }
+    }
+
+    ROCP_INFO << "Writing HSA API events via kernel tracepoints...";
+
+    // Collect all events for batch emission
+    std::vector<amdgpu_pmu_api_event> events;
+    uint64_t                          total_records = 0;
+
+    for(auto ditr : hsa_api_gen)
+    {
+        for(const auto& record : hsa_api_gen.get(ditr))
+        {
+            total_records++;
+
+            amdgpu_pmu_api_event ev = {};
+            ev.kind                 = record.kind;
+            ev.operation            = record.operation;
+            ev.correlation_id       = record.correlation_id.internal;
+            ev.start_ts             = record.start_timestamp;
+            ev.end_ts               = record.end_timestamp;
+            ev.thread_id            = record.thread_id;
+
+            // Query operation name based on kind
+            const char* op_name     = nullptr;
+            auto        buffer_kind = static_cast<rocprofiler_buffer_tracing_kind_t>(record.kind);
+            if(rocprofiler_query_buffer_tracing_kind_operation_name(
+                   buffer_kind, record.operation, &op_name, nullptr) == ROCPROFILER_STATUS_SUCCESS &&
+               op_name != nullptr)
+            {
+                strncpy(ev.operation_name, op_name, AMDGPU_PMU_API_NAME_MAX - 1);
+                ev.operation_name[AMDGPU_PMU_API_NAME_MAX - 1] = '\0';
+            }
+            else
+            {
+                snprintf(ev.operation_name, AMDGPU_PMU_API_NAME_MAX, "unknown_%u", record.operation);
+            }
+
+            events.push_back(ev);
+        }
+    }
+
+    if(events.empty())
+    {
+        ROCP_INFO << "No HSA API events to emit";
+        return;
+    }
+
+    // Emit events in batches
+    uint64_t event_count = 0;
+    for(size_t offset = 0; offset < events.size(); offset += AMDGPU_PMU_MAX_BATCH_SIZE)
+    {
+        size_t batch_size = std::min(static_cast<size_t>(AMDGPU_PMU_MAX_BATCH_SIZE),
+                                     events.size() - offset);
+
+        struct amdgpu_pmu_emit_events batch = {};
+        batch.event_type                    = AMDGPU_PMU_EVENT_HSA_API;
+        batch.count                         = batch_size;
+        batch.events_ptr = reinterpret_cast<uint64_t>(events.data() + offset);
+
+        if(ioctl(g_kernel_trace_fd, AMDGPU_PMU_IOCTL_EMIT_BATCH, &batch) == 0)
+        {
+            event_count += batch_size;
+        }
+        else
+        {
+            ROCP_WARNING << "Failed to emit HSA API batch: " << strerror(errno);
+        }
+    }
+
+    ROCP_INFO << "Wrote " << event_count << " of " << total_records
+              << " HSA API events via kernel tracepoints";
+}
+
+// Helper: Write HSA API events via user_events (original behavior)
+static void
+write_hsa_api_via_user_events(
+    const generator<rocprofiler_buffer_tracing_hsa_api_record_t>& hsa_api_gen)
+{
     if(!g_hsa_api_event.initialized.load() || g_hsa_api_event.fd < 0)
     {
         ROCP_WARNING << "Perf user_event 'rocprof_hsa_api' not initialized.";
@@ -302,7 +564,7 @@ write_hsa_api_events(const output_config&                                       
         return;
     }
 
-    ROCP_INFO << "Tracepoint enabled, writing HSA API events...";
+    ROCP_INFO << "Writing HSA API events via user_events...";
 
     // Iterate through HSA API records and emit events
     uint64_t event_count   = 0;
@@ -345,17 +607,126 @@ write_hsa_api_events(const output_config&                                       
     }
 
     ROCP_INFO << "Wrote " << event_count << " of " << total_records
-              << " HSA API events to perf user_events";
+              << " HSA API events via user_events";
 }
 
 void
-write_hip_api_events(const output_config&                                       cfg,
-                     const metadata&                                            tool_metadata,
-                     const generator<tool_buffer_tracing_hip_api_ext_record_t>& hip_api_gen)
+write_hsa_api_events(const output_config&                                          cfg,
+                     const metadata&                                               tool_metadata,
+                     const generator<rocprofiler_buffer_tracing_hsa_api_record_t>& hsa_api_gen)
 {
     (void) cfg;
     (void) tool_metadata;
 
+    if(g_use_kernel_tracepoints)
+    {
+        write_hsa_api_via_kernel(hsa_api_gen);
+    }
+    else
+    {
+        write_hsa_api_via_user_events(hsa_api_gen);
+    }
+}
+
+// Helper: Write HIP API events via kernel tracepoints (batch mode)
+static void
+write_hip_api_via_kernel(
+    const generator<tool_buffer_tracing_hip_api_ext_record_t>& hip_api_gen)
+{
+    if(g_kernel_trace_fd < 0)
+    {
+        ROCP_WARNING << "Kernel trace device not available";
+        return;
+    }
+
+    // Check if tracepoint is enabled
+    uint32_t enabled = 0;
+    if(ioctl(g_kernel_trace_fd, AMDGPU_PMU_IOCTL_QUERY_ENABLED, &enabled) == 0)
+    {
+        if((enabled & (1 << AMDGPU_PMU_EVENT_HIP_API)) == 0)
+        {
+            ROCP_WARNING << "HIP API tracepoint not enabled. "
+                         << "Start perf record with -e amdgpu_pmu:hip_api";
+            return;
+        }
+    }
+
+    ROCP_INFO << "Writing HIP API events via kernel tracepoints...";
+
+    // Collect all events for batch emission
+    std::vector<amdgpu_pmu_api_event> events;
+    uint64_t                          total_records = 0;
+
+    for(auto ditr : hip_api_gen)
+    {
+        for(const auto& record : hip_api_gen.get(ditr))
+        {
+            total_records++;
+
+            amdgpu_pmu_api_event ev = {};
+            ev.kind                 = record.kind;
+            ev.operation            = record.operation;
+            ev.correlation_id       = record.correlation_id.internal;
+            ev.start_ts             = record.start_timestamp;
+            ev.end_ts               = record.end_timestamp;
+            ev.thread_id            = record.thread_id;
+
+            // Query operation name based on kind
+            const char* op_name     = nullptr;
+            auto        buffer_kind = static_cast<rocprofiler_buffer_tracing_kind_t>(record.kind);
+            if(rocprofiler_query_buffer_tracing_kind_operation_name(
+                   buffer_kind, record.operation, &op_name, nullptr) == ROCPROFILER_STATUS_SUCCESS &&
+               op_name != nullptr)
+            {
+                strncpy(ev.operation_name, op_name, AMDGPU_PMU_API_NAME_MAX - 1);
+                ev.operation_name[AMDGPU_PMU_API_NAME_MAX - 1] = '\0';
+            }
+            else
+            {
+                snprintf(ev.operation_name, AMDGPU_PMU_API_NAME_MAX, "unknown_%u", record.operation);
+            }
+
+            events.push_back(ev);
+        }
+    }
+
+    if(events.empty())
+    {
+        ROCP_INFO << "No HIP API events to emit";
+        return;
+    }
+
+    // Emit events in batches
+    uint64_t event_count = 0;
+    for(size_t offset = 0; offset < events.size(); offset += AMDGPU_PMU_MAX_BATCH_SIZE)
+    {
+        size_t batch_size = std::min(static_cast<size_t>(AMDGPU_PMU_MAX_BATCH_SIZE),
+                                     events.size() - offset);
+
+        struct amdgpu_pmu_emit_events batch = {};
+        batch.event_type                    = AMDGPU_PMU_EVENT_HIP_API;
+        batch.count                         = batch_size;
+        batch.events_ptr = reinterpret_cast<uint64_t>(events.data() + offset);
+
+        if(ioctl(g_kernel_trace_fd, AMDGPU_PMU_IOCTL_EMIT_BATCH, &batch) == 0)
+        {
+            event_count += batch_size;
+        }
+        else
+        {
+            ROCP_WARNING << "Failed to emit HIP API batch: " << strerror(errno);
+        }
+    }
+
+    ROCP_INFO << "Wrote " << event_count << " of " << total_records
+              << " HIP API events via kernel tracepoints";
+}
+
+// Helper: Write HIP API events via user_events (original behavior)
+static void
+write_hip_api_via_user_events(
+    const generator<tool_buffer_tracing_hip_api_ext_record_t>& hip_api_gen)
+{
     if(!g_hip_api_event.initialized.load() || g_hip_api_event.fd < 0)
     {
         ROCP_WARNING << "Perf user_event 'rocprof_hip_api' not initialized.";
@@ -372,7 +743,7 @@ write_hip_api_events(const output_config&                                       
         return;
     }
 
-    ROCP_INFO << "Tracepoint enabled, writing HIP API events...";
+    ROCP_INFO << "Writing HIP API events via user_events...";
 
     // Iterate through HIP API records and emit events
     uint64_t event_count   = 0;
@@ -415,7 +786,25 @@ write_hip_api_events(const output_config&                                       
     }
 
     ROCP_INFO << "Wrote " << event_count << " of " << total_records
-              << " HIP API events to perf user_events";
+              << " HIP API events via user_events";
+}
+
+void
+write_hip_api_events(const output_config&                                       cfg,
+                     const metadata&                                            tool_metadata,
+                     const generator<tool_buffer_tracing_hip_api_ext_record_t>& hip_api_gen)
+{
+    (void) cfg;
+    (void) tool_metadata;
+
+    if(g_use_kernel_tracepoints)
+    {
+        write_hip_api_via_kernel(hip_api_gen);
+    }
+    else
+    {
+        write_hip_api_via_user_events(hip_api_gen);
+    }
 }
 
 }  // namespace tool

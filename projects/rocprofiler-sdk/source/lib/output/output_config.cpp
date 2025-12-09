@@ -78,8 +78,10 @@ output_config::parse_env()
     json_output             = entries.count("JSON") > 0;
     pftrace_output          = entries.count("PFTRACE") > 0;
     otf2_output             = entries.count("OTF2") > 0;
-    rocpd_output            = entries.count("ROCPD") > 0 || entries.empty();
     perf_user_events_output = entries.count("PERF_USER_EVENTS") > 0;
+    // Enable rocpd_output by default, when explicitly requested, or when perf_user_events is enabled
+    // (perf_user_events needs rocpd buffers to be initialized)
+    rocpd_output            = entries.count("ROCPD") > 0 || entries.empty() || perf_user_events_output;
 
     const auto supported_formats =
         std::set<std::string_view>{"CSV", "JSON", "PFTRACE", "OTF2", "ROCPD", "PERF_USER_EVENTS"};

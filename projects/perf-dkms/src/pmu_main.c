@@ -22,6 +22,7 @@
 #include "aql_c/counter_registry.h"
 #include "pmu_dimension.h"
 #include "amdgpu_pmu_trace.h"
+#include "amdgpu_pmu_trace_dev.h"
 
 /* Global PMU instance */
 static struct amdgpu_pmu *amdgpu_pmu_instance;
@@ -985,6 +986,13 @@ static int __init amdgpu_pmu_init(void)
 		aql_pmu_put_session(session);
 	}
 
+	/* Register trace device for userspace tracepoint emission */
+	ret = amdgpu_pmu_trace_dev_init();
+	if (ret) {
+		pmu_err("Failed to register trace device: %d\n", ret);
+		/* Non-fatal - PMU still works, just no userspace trace emission */
+	}
+
 	pmu_info("PMU Stub module loaded successfully\n");
 	pmu_info("Events available under: /sys/bus/event_source/devices/%s/\n", PMU_NAME);
 
@@ -997,6 +1005,9 @@ static void __exit amdgpu_pmu_exit(void)
 	struct amdgpu_pmu *pmu = amdgpu_pmu_instance;
 
 	pmu_info("Unloading PMU Stub module\n");
+
+	/* Unregister trace device */
+	amdgpu_pmu_trace_dev_exit();
 
 	if (pmu) {
 		/* Step 1: Stop timer to prevent new work from being queued */

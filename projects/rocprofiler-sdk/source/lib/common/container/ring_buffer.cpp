@@ -79,9 +79,12 @@ ring_buffer::init(size_t _size)
     m_init = true;
 
     // Round up to multiple of page size.
-    _size += units::get_page_size() - ((_size % units::get_page_size() > 0)
-                                           ? (_size % units::get_page_size())
-                                           : units::get_page_size());
+    auto page_size = units::get_page_size();
+    auto remainder = _size % page_size;
+    if(remainder != 0)
+    {
+        _size += (page_size - remainder);
+    }
 
     if((_size % units::get_page_size()) > 0)
     {
@@ -101,6 +104,7 @@ ring_buffer::init(size_t _size)
             mmap(nullptr, m_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0)) ==
        MAP_FAILED)
     {
+        m_ptr     = nullptr;  // Reset pointer before calling destroy()
         destroy();
         auto _err = errno;
         ROCP_FATAL << fmt::format("mmap failed with errno {} :: {}", _err, strerror(_err));
@@ -110,7 +114,7 @@ ring_buffer::init(size_t _size)
 void
 ring_buffer::destroy()
 {
-    if(m_ptr && m_init)
+    if(m_ptr && m_ptr != MAP_FAILED && m_init)
     {
         // Unmap the mapped virtual memmory.
         auto ret = munmap(m_ptr, m_size);
@@ -235,7 +239,6 @@ ring_buffer::load(std::fstream& _fs)
     size_t _size        = 0;
 
     _fs.read(reinterpret_cast<char*>(&_size), sizeof(_size));
-
     init(_size);
 
     if(!m_ptr) throw std::bad_alloc{};
