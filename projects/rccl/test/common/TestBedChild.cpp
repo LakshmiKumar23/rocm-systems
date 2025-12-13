@@ -105,14 +105,14 @@ namespace RcclUnitTesting
     close(this->parentReadFd);
 
     // Wait for commands from parent process
-    if (verbose) INFO("Child %d enters execution loop\n", this->childId);
+    if (verbose) TEST_INFO("Child %d enters execution loop\n", this->childId);
     #ifndef ENABLE_OPENMP
-    if (verbose && useRankThreading) WARN("Multi-threaded ranks requires ENABLE_OPENMP to be defined\n");
+    if (verbose && useRankThreading) TEST_WARN("Multi-threaded ranks requires ENABLE_OPENMP to be defined\n");
     #endif
     int command;
     while (read(childReadFd, &command, sizeof(command)) > 0)
     {
-      if (verbose) INFO("Child %d received command [%s]:\n", this->childId, ChildCommandNames[command]);;
+      if (verbose) TEST_INFO("Child %d received command [%s]:\n", this->childId, ChildCommandNames[command]);;
       ErrCode status = TEST_SUCCESS;
       std::vector<char> retValBuf;
       switch(command)
@@ -146,7 +146,7 @@ namespace RcclUnitTesting
       }
     }
   stop:
-    if (verbose) INFO("Child %d exiting execution loop\n", this->childId);
+    if (verbose) TEST_INFO("Child %d exiting execution loop\n", this->childId);
 
     // Close child ends of pipe
     close(this->childReadFd);
@@ -157,7 +157,7 @@ namespace RcclUnitTesting
 
   ErrCode TestBedChild::GetUniqueId(std::vector<char>& retValBuf)
   {
-    if (this->verbose) INFO("Child %d begins GetUniqueId()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d begins GetUniqueId()\n", this->childId);
 
     // Get a unique ID and pass it back to parent process
     ncclUniqueId id;
@@ -165,13 +165,13 @@ namespace RcclUnitTesting
     retValBuf.resize(sizeof(id));
     memcpy(retValBuf.data(), &id, sizeof(id));
 
-    if (this->verbose) INFO("Child %d finishes GetUniqueId()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d finishes GetUniqueId()\n", this->childId);
     return TEST_SUCCESS;
   }
 
   ErrCode TestBedChild::InitComms()
   {
-    if (this->verbose) INFO("Child %d begins InitComms()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d begins InitComms()\n", this->childId);
 
     // Read values sent by parent [see TestBed::InitComms()]
     ncclUniqueId id;
@@ -297,14 +297,14 @@ namespace RcclUnitTesting
       }
     }
 
-    if (this->verbose) INFO("Child %d finishes InitComms() [%s]\n",
+    if (this->verbose) TEST_INFO("Child %d finishes InitComms() [%s]\n",
                             this->childId, status == TEST_SUCCESS ? "SUCCESS" : "FAIL");
     return status;
   }
 
   ErrCode TestBedChild::SetCollectiveArgs()
   {
-    if (this->verbose) INFO("Child %d begins SetCollectiveArgs()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d begins SetCollectiveArgs()\n", this->childId);
 
     // Read values sent by parent [see TestBed::SetCollectiveArgs()]
     int             globalRank;
@@ -346,7 +346,7 @@ namespace RcclUnitTesting
                                    numInputElements, numOutputElements,
                                    streamIdx,
                                    options));
-        if (this->verbose) INFO("Rank %d on child %d sets collective %d in group %d [%s]\n",
+        if (this->verbose) TEST_INFO("Rank %d on child %d sets collective %d in group %d [%s]\n",
                                 globalRank, this->childId, collIdx, groupId,
                                 collArg.GetDescription().c_str());
 
@@ -359,18 +359,18 @@ namespace RcclUnitTesting
                                                    (ncclScalarResidence_t)options.scalarMode,
                                                    this->comms[localRank]),
                           "ncclRedOpCreatePreMulSum");
-          if (verbose) INFO("Child %d created custom redop %d for group %d collective %d\n",
+          if (verbose) TEST_INFO("Child %d created custom redop %d for group %d collective %d\n",
                             this->childId, collArg.options.redOp, groupId, collIdx);
         }
       }
     }
-    if (this->verbose) INFO("Child %d finishes SetCollectiveArgs()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d finishes SetCollectiveArgs()\n", this->childId);
     return TEST_SUCCESS;
   }
 
   ErrCode TestBedChild::AllocateMem()
   {
-    if (this->verbose) INFO("Child %d begins AllocateMem()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d begins AllocateMem()\n", this->childId);
 
     // Read values sent by parent [see TestBed::AllocateMem()]
     int    globalRank;
@@ -403,7 +403,7 @@ namespace RcclUnitTesting
         CHECK_CALL(collArg.AllocateMem(inPlace, useManagedMem, userRegistered));
         if (collArg.userRegistered && (collArg.funcType == ncclCollSend || collArg.funcType == ncclCollRecv))
           CHILD_NCCL_CALL(ncclCommRegister(this->comms[localRank], collArg.inputGpu.ptr, collArg.numInputBytesAllocated, &(collArg.commRegHandle)),"ncclCommRegister");
-        if (this->verbose) INFO("Rank %d on child %d allocates memory for collective %d in group %d on device %d (%s,%s,%s) Input: %p Output %p\n",
+        if (this->verbose) TEST_INFO("Rank %d on child %d allocates memory for collective %d in group %d on device %d (%s,%s,%s) Input: %p Output %p\n",
                                 globalRank, this->childId, collIdx, groupId, this->deviceIds[localRank],
                                 inPlace ? "in-place" : "out-of-place",
                                 useManagedMem ? "managed" : "unmanaged",
@@ -413,14 +413,14 @@ namespace RcclUnitTesting
       }
     }
 
-    if (this->verbose) INFO("Child %d finishes AllocateMem()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d finishes AllocateMem()\n", this->childId);
     return TEST_SUCCESS;
   }
 
   // Fill input memory with pre-known patterned based on rank
   ErrCode TestBedChild::PrepareData()
   {
-    if (this->verbose) INFO("Child %d begins PrepareData()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d begins PrepareData()\n", this->childId);
 
     // Read values sent by parent [see TestBed::PrepareData()]
     int globalRank;
@@ -446,12 +446,12 @@ namespace RcclUnitTesting
     {
       if (collId == -1 || collId == collIdx)
       {
-        if (this->verbose) INFO("Rank %d on child %d prepares data for collective %d in group %d\n",
+        if (this->verbose) TEST_INFO("Rank %d on child %d prepares data for collective %d in group %d\n",
                                 globalRank, this->childId, collIdx, groupId);
         CHECK_CALL(this->collArgs[groupId][localRank][collIdx].PrepareData(prepDataFunc));
       }
     }
-    if (this->verbose) INFO("Child %d finishes PrepareData()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d finishes PrepareData()\n", this->childId);
     return TEST_SUCCESS;
   }
 
@@ -473,7 +473,7 @@ namespace RcclUnitTesting
       PIPE_READ(tempRank);
       ranksToExecute.push_back(tempRank - this->rankOffset);
     }
-    if (this->verbose) INFO("Child %d begins ExecuteCollectives() %s\n", this->childId, useHipGraph ? "(using hipGraphs)" : "");
+    if (this->verbose) TEST_INFO("Child %d begins ExecuteCollectives() %s\n", this->childId, useHipGraph ? "(using hipGraphs)" : "");
 
     // Determine which local ranks to execute on
     std::vector<int> localRanksToExecute;
@@ -501,7 +501,7 @@ namespace RcclUnitTesting
     {
       for (int localRank : localRanksToExecute)
       {
-        if (this->verbose) INFO("Capturing stream for group %d rank %d\n", groupId, localRank);
+        if (this->verbose) TEST_INFO("Capturing stream for group %d rank %d\n", groupId, localRank);
         CHECK_HIP(hipSetDevice(this->deviceIds[localRank]));
         for (int i = 0; i < this->numStreamsPerGroup[groupId]; i++)
         {
@@ -520,14 +520,14 @@ namespace RcclUnitTesting
     {
       // Loop over all local ranks
       if (this->verbose && this->useRankThreading)
-        INFO("Group %d collective %d running %d threads\n", groupId, collId, numThreadsToUse);
+        TEST_INFO("Group %d collective %d running %d threads\n", groupId, collId, numThreadsToUse);
       ErrCode errCode = TEST_SUCCESS;
       auto& errCodeVal = reinterpret_cast<int&>(errCode);
       #pragma omp parallel for num_threads(numThreadsToUse) reduction(max : errCodeVal)
       for (int localRank : localRanksToExecute)
       {
         if (this->verbose && this->useRankThreading)
-          INFO("Group %d collective %d running rank %d on thread %d\n", groupId, collId, localRank, getThreadId());
+          TEST_INFO("Group %d collective %d running rank %d on thread %d\n", groupId, collId, localRank, getThreadId());
 
         CHECK_HIP_RANK(errCode, hipSetDevice(this->deviceIds[localRank]));
 
@@ -700,7 +700,7 @@ namespace RcclUnitTesting
         }
 
         if (this->verbose && this->useRankThreading)
-          INFO("Group %d collective %d done rank %d on thread %d\n", groupId, collId, localRank, getThreadId());
+          TEST_INFO("Group %d collective %d done rank %d on thread %d\n", groupId, collId, localRank, getThreadId());
       }
 
       if (this->useRankThreading) CHECK_CALL(errCode);
@@ -730,7 +730,7 @@ namespace RcclUnitTesting
     {
       for (int localRank : localRanksToExecute)
       {
-        if (this->verbose) INFO("Ending stream capture for rank %d\n", localRank);
+        if (this->verbose) TEST_INFO("Ending stream capture for rank %d\n", localRank);
         CHECK_HIP(hipSetDevice(this->deviceIds[localRank]));
         for (int i = 0; i < this->numStreamsPerGroup[groupId]; i++)
         {
@@ -741,11 +741,11 @@ namespace RcclUnitTesting
           //   size_t numNodes;
           //   hipGraphNode_t* nodes;
           //   CHECK_HIP(hipGraphGetNodes(graphs[localRank][i], nodes, &numNodes));
-          //   INFO("Graph for rank %d stream %d has %lu nodes\n", localRank, i, numNodes);
+          //   TEST_INFO("Graph for rank %d stream %d has %lu nodes\n", localRank, i, numNodes);
           // }
         }
 
-        if (this->verbose) INFO("Instantiating executable graph for group %d rank %d\n", groupId, localRank);
+        if (this->verbose) TEST_INFO("Instantiating executable graph for group %d rank %d\n", groupId, localRank);
         for (int i = 0; i < this->numStreamsPerGroup[groupId]; i++)
         {
           CHECK_HIP(hipGraphInstantiate(&this->graphExecs[groupId][localRank][i], this->graphs[groupId][localRank][i], NULL, NULL, 0));
@@ -756,7 +756,7 @@ namespace RcclUnitTesting
     else
     {
       if (this->verbose)
-        INFO("Child %d submits group call.  Waiting for completion\n", this->childId);
+        TEST_INFO("Child %d submits group call.  Waiting for completion\n", this->childId);
     }
 
     // Synchronize
@@ -769,7 +769,7 @@ namespace RcclUnitTesting
     int usElapsed = 0, timedout = 0;
     using namespace std::chrono;
     using Clock = std::chrono::high_resolution_clock;
-    if (this->verbose) INFO("Starting sychronization and timing\n");
+    if (this->verbose) TEST_INFO("Starting sychronization and timing\n");
     const auto start = Clock::now();
     while (!streamsToComplete.empty() && usElapsed < timeoutUs)
     {
@@ -787,7 +787,7 @@ namespace RcclUnitTesting
     // timed out
     if (!streamsToComplete.empty())
     {
-      if (this->verbose) INFO("Collective timed out, aborting\n");
+      if (this->verbose) TEST_INFO("Collective timed out, aborting\n");
       for (int localRank : localRanksToExecute)
       {
         ncclCommAbort(this->comms[localRank]);
@@ -800,7 +800,7 @@ namespace RcclUnitTesting
     // of fencing between kernels and at hipStreamQuery
     for (int localRank : localRanksToExecute)
     {
-      if (this->verbose) INFO("Starting synchronization for group %d rank %d\n", groupId, localRank);
+      if (this->verbose) TEST_INFO("Starting synchronization for group %d rank %d\n", groupId, localRank);
       for (int i = 0; i < this->numStreamsPerGroup[groupId]; i++)
         CHECK_HIP(hipStreamSynchronize(this->streams[groupId][localRank][i]));
     }
@@ -829,7 +829,7 @@ namespace RcclUnitTesting
       return TEST_TIMEOUT;
     }
 
-    if (this->verbose) INFO("Child %d finishes ExecuteCollectives()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d finishes ExecuteCollectives()\n", this->childId);
     return TEST_SUCCESS;
   }
 
@@ -841,7 +841,7 @@ namespace RcclUnitTesting
     PIPE_READ(groupId);
     PIPE_READ(collId);
 
-    if (this->verbose) INFO("Child %d begins ValidateResults()\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d begins ValidateResults()\n", this->childId);
 
     if (globalRank < this->rankOffset || (this->rankOffset + comms.size() <= globalRank))
     {
@@ -856,7 +856,7 @@ namespace RcclUnitTesting
     {
       if (collId == -1 || collId == collIdx)
       {
-        if (this->verbose) INFO("Rank %d on child %d validating collective %d in group %d results\n",
+        if (this->verbose) TEST_INFO("Rank %d on child %d validating collective %d in group %d results\n",
                                 globalRank, this->childId, collIdx, groupId);
         if (this->collArgs[groupId][localRank][collIdx].ValidateResults() != TEST_SUCCESS)
         {
@@ -865,7 +865,7 @@ namespace RcclUnitTesting
         }
       }
     }
-    if (this->verbose) INFO("Child %d finishes ValidateResults() with status %s\n", this->childId,
+    if (this->verbose) TEST_INFO("Child %d finishes ValidateResults() with status %s\n", this->childId,
                             status == TEST_SUCCESS ? "SUCCESS" : "FAIL");
     return status;
   }
@@ -875,25 +875,25 @@ namespace RcclUnitTesting
     int groupId;
     PIPE_READ(groupId);
 
-    if (this->verbose) INFO("Child %d begins LaunchGraphs for group %d\n", this->childId, groupId);
+    if (this->verbose) TEST_INFO("Child %d begins LaunchGraphs for group %d\n", this->childId, groupId);
 
     for (int localRank = 0; localRank < this->deviceIds.size(); ++localRank) {
       CHECK_HIP(hipSetDevice(this->deviceIds[localRank]));
 
       for (int streamIdx = 0; streamIdx < this->numStreamsPerGroup[groupId]; ++streamIdx)
       {
-        if (this->verbose) INFO("Launch graph for group %d rank %d stream %d\n", groupId, localRank, streamIdx);
+        if (this->verbose) TEST_INFO("Launch graph for group %d rank %d stream %d\n", groupId, localRank, streamIdx);
         CHECK_HIP(hipGraphLaunch(this->graphExecs[groupId][localRank][streamIdx], this->streams[groupId][localRank][streamIdx]));
       }
     }
 
-    if (this->verbose) INFO("Child %d finishes LaunchGraphs for group %d\n", this->childId, groupId);
+    if (this->verbose) TEST_INFO("Child %d finishes LaunchGraphs for group %d\n", this->childId, groupId);
     return TEST_SUCCESS;
   }
 
   ErrCode TestBedChild::DeallocateMem()
   {
-    if (this->verbose) INFO("Child %d begins DeallocateMem\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d begins DeallocateMem\n", this->childId);
 
     // Read values sent by parent [see TestBed::DeallocateMem()]
     int globalRank, groupId, collId;
@@ -916,7 +916,7 @@ namespace RcclUnitTesting
       {
         if (this->verbose)
         {
-          INFO("Child %d release memory for collective %d in group %d (Input: %p Output %p\n",
+          TEST_INFO("Child %d release memory for collective %d in group %d (Input: %p Output %p\n",
                this->childId, collIdx, groupId, collArg.inputGpu.ptr, collArg.outputGpu.ptr);
         }
         if (collArg.userRegistered && (collArg.funcType == ncclCollSend || collArg.funcType == ncclCollRecv))
@@ -930,17 +930,17 @@ namespace RcclUnitTesting
       {
         CHILD_NCCL_CALL(ncclRedOpDestroy(collArg.options.redOp, this->comms[localRank]),
                         "ncclRedOpDestroy");
-        if (verbose) INFO("Child %d destroys custom redop %d for collective %d in group %d\n",
+        if (verbose) TEST_INFO("Child %d destroys custom redop %d for collective %d in group %d\n",
                           this->childId, collArg.options.redOp, collIdx, groupId);
       }
     }
-    if (this->verbose) INFO("Child %d finishes DeallocateMem\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d finishes DeallocateMem\n", this->childId);
     return TEST_SUCCESS;
   }
 
   ErrCode TestBedChild::DestroyComms()
   {
-    if (this->verbose) INFO("Child %d begins DestroyComms\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d begins DestroyComms\n", this->childId);
 
     // Release comms
     for (int i = 0; i < this->comms.size(); ++i)
@@ -975,13 +975,13 @@ namespace RcclUnitTesting
     }
     this->comms.clear();
     this->streams.clear();
-    if (this->verbose) INFO("Child %d finishes DestroyComms\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d finishes DestroyComms\n", this->childId);
     return TEST_SUCCESS;
   }
 
   ErrCode TestBedChild::DestroyGraphs()
   {
-    if (this->verbose) INFO("Child %d begins DestroyGraphs\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d begins DestroyGraphs\n", this->childId);
 
     int groupId;
     PIPE_READ(groupId);
@@ -994,7 +994,7 @@ namespace RcclUnitTesting
       {
         if (graphEnabled[groupId][localRank][streamIdx])
         {
-          if (this->verbose) INFO("Destroying graphs for group %d rank %d stream %d\n", groupId, localRank, streamIdx);
+          if (this->verbose) TEST_INFO("Destroying graphs for group %d rank %d stream %d\n", groupId, localRank, streamIdx);
 
           CHECK_HIP(hipGraphDestroy(this->graphs[groupId][localRank][streamIdx]));
           CHECK_HIP(hipGraphExecDestroy(this->graphExecs[groupId][localRank][streamIdx]));
@@ -1012,7 +1012,7 @@ namespace RcclUnitTesting
     this->graphExecs[groupId].clear();
     this->graphEnabled[groupId].clear();
 
-    if (this->verbose) INFO("Child %d finishes DestroyGraphs\n", this->childId);
+    if (this->verbose) TEST_INFO("Child %d finishes DestroyGraphs\n", this->childId);
     return TEST_SUCCESS;
   }
 }
