@@ -181,6 +181,7 @@ hsa_status_t _internal_aqlprofile_pmc_iterate_data(aqlprofile_handle_t handle,
                                static_cast<size_t>(event.block_index) * block_samples_count + blk;
 
         if (!event.bInternal) {
+          std::cout << "XCC: " << xcc_index << " value: " << *samples << std::endl;
           hsa_status_t status = callback(event, xcc_sample_id, *samples, userdata);
           if (status == HSA_STATUS_INFO_BREAK)
             return HSA_STATUS_SUCCESS;

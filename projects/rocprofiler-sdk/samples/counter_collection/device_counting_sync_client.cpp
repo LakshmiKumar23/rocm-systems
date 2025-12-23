@@ -58,14 +58,26 @@
         }                                                                                          \
     }
 
+std::atomic<int> bstart{false};
+std::atomic<int> bread{false};
+
 int
 start()
 {
+    bstart.store(true);
+    while (bstart) std::this_thread::sleep_for(std::chrono::microseconds(10));
     return 1;
+}
+
+void read()
+{
+    bread.store(true);
+    while (bread) std::this_thread::sleep_for(std::chrono::microseconds(10));
 }
 
 namespace
 {
+auto _COUNTER_NAMES = std::vector<std::string>{"SQ_LEVEL_WAVES"};
 // Class to sample counter values from the ROCProfiler API
 // This class is not thread safe and should not be shared between threads.
 // Only a single instance of this class should be created per agent.
@@ -84,8 +96,10 @@ public:
         const rocprofiler_counter_record_t& rec);
 
     // Sample the counter values for a set of counters, returns the records in the out parameter.
-    rocprofiler_status_t sample_counter_values(const std::vector<std::string>&            counters,
+    rocprofiler_status_t start_counter_values(const std::vector<std::string>&            counters,
                                                std::vector<rocprofiler_counter_record_t>& out);
+    // Sample the counter values for a set of counters, returns the records in the out parameter.
+    rocprofiler_status_t read_counter_values(std::vector<rocprofiler_counter_record_t>& out);
 
     // Get the available agents on the system
     static std::vector<rocprofiler_agent_v0_t> get_available_agents();
@@ -202,7 +216,7 @@ counter_sampler::get_record_dimensions(const rocprofiler_counter_record_t& rec)
 }
 
 rocprofiler_status_t
-counter_sampler::sample_counter_values(const std::vector<std::string>&            counters,
+counter_sampler::start_counter_values(const std::vector<std::string>&            counters,
                                        std::vector<rocprofiler_counter_record_t>& out)
 {
     auto profile_cached = cached_profiles_.find(counters);
@@ -240,12 +254,16 @@ counter_sampler::sample_counter_values(const std::vector<std::string>&          
     }
     profile_ = profile_cached->second;
     rocprofiler_start_context(ctx_);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    return ROCPROFILER_STATUS_SUCCESS;
+}
+rocprofiler_status_t
+counter_sampler::read_counter_values(std::vector<rocprofiler_counter_record_t>& out)
+{
     size_t out_size = out.size();
     auto   status   = rocprofiler_sample_device_counting_service(
         ctx_, {}, ROCPROFILER_COUNTER_FLAG_NONE, out.data(), &out_size);
-    rocprofiler_stop_context(ctx_);
     out.resize(out_size);
+    stop();
     return status;
 }
 
@@ -378,40 +396,54 @@ tool_init(rocprofiler_client_finalize_t fini_func, void*)
     sampler_thread = new std::thread{[=]() {
         size_t                                    count = 1;
         std::vector<rocprofiler_counter_record_t> records;
-        while(sampler && exit_toggle().load() == false)
+
+        auto breakloop = []() { exit_toggle().store(false); return 0; };
+        
+        while(sampler)
         {
-            auto status = sampler->sample_counter_values({"SQ_WAVES"}, records);
-            if(status == ROCPROFILER_STATUS_ERROR_HSA_NOT_LOADED)
+            while (!bstart)
             {
-                std::clog << "HSA not loaded yet....\n";
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                continue;
+                if (exit_toggle()) return breakloop();
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
             }
+
+            while(true)
+            {
+                auto status = sampler->start_counter_values(_COUNTER_NAMES, records);
+                if(status != ROCPROFILER_STATUS_ERROR_HSA_NOT_LOADED) break;
+
+                std::clog << "HSA not loaded yet....\n";
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+
+            bstart.store(false);
+            
+            while (!bread)
+            {
+                if (exit_toggle()) return breakloop();
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            }
+
+            auto status = sampler->read_counter_values(records);
+    
             std::clog << "Sample " << count << ":\n";
+
             if(status == ROCPROFILER_STATUS_SUCCESS)
             {
+                std::unordered_map<std::string, uint64_t> values{};
+
                 for(const auto& record : records)
                 {
                     if(!sampler) break;
                     auto recname = sampler->decode_record_name(record);
-                    std::clog << "\tCounter: " << record.id << " Name: " << recname
-                              << " Value: " << record.counter_value
-                              << " User data: " << record.user_data.value << "\n";
-                    if(count == 1)
-                    {
-                        if(!sampler) break;
-                        auto dims = sampler->get_record_dimensions(record);
-                        for(const auto& [name, pos] : dims)
-                        {
-                            std::clog << "\t\tDimension Name: " << name << ": " << pos << "\n";
-                        }
-                    }
+                    values[recname] += record.counter_value;
                 }
+                for(const auto& [name, value] : values)
+                    std::clog << "\tCounter: " << name << " Value: " << value << "\n";
             }
-            count++;
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            bread.store(false);
         }
-        exit_toggle().store(false);
+        return 0;
     }};
 
     // no errors
@@ -466,15 +498,7 @@ rocprofiler_configure(uint32_t                 version,
 
     std::clog << info.str() << std::endl;
 
-    std::ostream* output_stream = nullptr;
-    std::string   filename      = "counter_collection.log";
-    if(auto* outfile = getenv("ROCPROFILER_SAMPLE_OUTPUT_FILE"); outfile) filename = outfile;
-    if(filename == "stdout")
-        output_stream = &std::cout;
-    else if(filename == "stderr")
-        output_stream = &std::cerr;
-    else
-        output_stream = new std::ofstream{filename};
+    std::ostream* output_stream = &std::cout;
 
     // create configure data
     static auto cfg =

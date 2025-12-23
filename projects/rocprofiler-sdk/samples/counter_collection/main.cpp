@@ -21,6 +21,9 @@
 // SOFTWARE.
 
 #include <hip/hip_runtime.h>
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 #include <libgen.h>
 #include "client.hpp"
@@ -37,123 +40,45 @@
     } while(0)
 
 __global__ void
-kernelA(int x, int y)
+kernelA(int* flag)
 {
-    x = x + y;
-}
-
-__global__ void
-kernelB(int x, int y)
-{
-    x = x + y;
-}
-
-template <typename T>
-__global__ void
-kernelC(T* C_d, const T* A_d, size_t N)
-{
-    size_t offset = (blockIdx.x * blockDim.x + threadIdx.x);
-    size_t stride = blockDim.x * gridDim.x;
-    for(size_t i = offset; i < N; i += stride)
-    {
-        C_d[i] = A_d[i] * A_d[i];
-    }
-}
-
-void
-launchKernels(const long NUM_LAUNCH, const long SYNC_INTERVAL, const int DEV_ID)
-{
-    // Normal HIP Calls
-    HIP_CALL(hipSetDevice(DEV_ID));
-    [[maybe_unused]] hipDeviceProp_t devProp;
-    HIP_CALL(hipGetDeviceProperties(&devProp, DEV_ID));
-
-    int* gpuMem = nullptr;
-    HIP_CALL(hipMalloc((void**) &gpuMem, 1 * sizeof(int)));
-
-    for(long i = 0; i < NUM_LAUNCH; i++)
-    {
-        // KernelA and KernelB to be profiled as part of the session
-        hipLaunchKernelGGL(kernelA, dim3(1), dim3(1), 0, 0, 1, 2);
-        hipLaunchKernelGGL(kernelB, dim3(1), dim3(1), 0, 0, 1, 2);
-        if(i % SYNC_INTERVAL == (SYNC_INTERVAL - 1)) HIP_CALL(hipDeviceSynchronize());
-    }
-
-    const int NElems = 512 * 512;
-    const int Nbytes = NElems * sizeof(int);
-    int *     A_d, *C_d;
-    int       A_h[NElems], C_h[NElems];
-
-    for(int i = 0; i < NElems; i++)
-    {
-        A_h[i] = i;
-    }
-
-    HIP_CALL(hipDeviceSynchronize());
-
-    HIP_CALL(hipMalloc(&A_d, Nbytes));
-    HIP_CALL(hipMalloc(&C_d, Nbytes));
-    HIP_CALL(hipMemcpy(A_d, A_h, Nbytes, hipMemcpyHostToDevice));
-    HIP_CALL(hipDeviceSynchronize());
-    const unsigned blocks          = 512;
-    const unsigned threadsPerBlock = 256;
-    for(long i = 0; i < NUM_LAUNCH; i++)
-    {
-        hipLaunchKernelGGL(kernelC, dim3(blocks), dim3(threadsPerBlock), 0, 0, C_d, A_d, NElems);
-        if(i % SYNC_INTERVAL == (SYNC_INTERVAL - 1)) HIP_CALL(hipDeviceSynchronize());
-    }
-    HIP_CALL(hipMemcpy(C_h, C_d, Nbytes, hipMemcpyDeviceToHost));
-    HIP_CALL(hipDeviceSynchronize());
-    HIP_CALL(hipFree(gpuMem));
-    HIP_CALL(hipFree(A_d));
-    HIP_CALL(hipFree(C_d));
-    HIP_CALL(hipDeviceReset());
+    for (int i=0; i<10000; i++) asm volatile("s_sleep 63"); // 2us * 1000 * 100 = 200ms
 }
 
 int
 main(int argc, char** argv)
 {
-    auto* exe_name = basename(argv[0]);
-
+    int thr = 256;
+    int blk = 256;
     int ntotdevice = 0;
     HIP_CALL(hipGetDeviceCount(&ntotdevice));
 
-    long nitr    = 5000;
-    long nsync   = 50;
-    long ndevice = 0;
+    // Normal HIP Calls
+    HIP_CALL(hipSetDevice(0));
+    [[maybe_unused]] hipDeviceProp_t devProp;
+    HIP_CALL(hipGetDeviceProperties(&devProp, 0));
 
-    for(int i = 1; i < argc; ++i)
-    {
-        auto _arg = std::string{argv[i]};
-        if(_arg == "?" || _arg == "-h" || _arg == "--help")
-        {
-            fprintf(stderr,
-                    "usage: %s [NUM_ITERATION (%li)] [SYNC_EVERY_N_ITERATIONS (%li)] "
-                    "[NUMBER_OF_DEVICES (%li)]\n\n\tBy default, 0 for the number of devices means "
-                    "use all device available",
-                    exe_name,
-                    nitr,
-                    nsync,
-                    ndevice);
-            exit(EXIT_SUCCESS);
-        }
-    }
+    HIP_CALL(hipDeviceSynchronize());
 
-    if(argc > 1) nitr = atol(argv[1]);
-    if(argc > 2) nsync = atoll(argv[2]);
-    if(argc > 3) ndevice = atol(argv[3]);
-
-    if(ndevice > ntotdevice) ndevice = ntotdevice;
-    if(ndevice < 1) ndevice = ntotdevice;
-
-    printf("[%s] Number of devices used: %li\n", exe_name, ndevice);
-    printf("[%s] Number of iterations: %li\n", exe_name, nitr);
-    printf("[%s] Syncing every %li iterations\n", exe_name, nsync);
-    std::cout << std::flush;
-
+    std::cout << "Start before kernel, read after kernel: " << std::endl;
     start();
-    for(long devid = 0; devid < ndevice; ++devid)
-        launchKernels(nitr, nsync, devid);
+    hipLaunchKernelGGL(kernelA, blk, thr, 0, 0, nullptr);
+    HIP_CALL(hipDeviceSynchronize());
+    read();
+    
+    std::cout << "Start before kernel, read during kernel: " << std::endl;
+    start();
+    hipLaunchKernelGGL(kernelA, blk, thr, 0, 0, nullptr);
+    std::this_thread::sleep_for(std::chrono::microseconds(100));
+    read();
+    HIP_CALL(hipDeviceSynchronize());
 
-    std::cerr << "Run complete\n" << std::flush;
+    std::cout << "Start during kernel, read after kernel: " << std::endl;
+    hipLaunchKernelGGL(kernelA, blk, thr, 0, 0, nullptr);
+    std::this_thread::sleep_for(std::chrono::microseconds(100));
+    start();
+    HIP_CALL(hipDeviceSynchronize()); 
+    read();
+
+    HIP_CALL(hipDeviceSynchronize());
 }

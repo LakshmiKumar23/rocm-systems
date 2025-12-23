@@ -28,3 +28,6 @@
 
 int
 start() CLIENT_API;
+
+void
+read() CLIENT_API;
