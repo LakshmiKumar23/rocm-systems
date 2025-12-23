@@ -43,8 +43,14 @@ __global__ void
 kernelA(int* flag)
 {
     __syncthreads();
-    if (threadIdx.x == 0) atomicAdd(flag, 1);
-    asm volatile("s_dcache_wb; s_waitcnt lgkmcnt(0)");
+    if (threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0)
+    {
+        atomicAdd(flag, 1);
+        asm volatile("s_dcache_wb;"
+                    "s_waitcnt lgkmcnt(0)"
+                    "buffer_wbl2;"
+                    "s_waitcnt vmcnt(0)");
+    }
     __syncthreads();
 
     int result = 1;
@@ -64,7 +70,7 @@ int* flag = nullptr;
 void LaunchAndConfirm()
 {
     int thr = 256;
-    int blk = 1;
+    int blk = 2;
     *flag = 0;
     hipLaunchKernelGGL(kernelA, blk, thr, 0, 0, (int*)flag);
     while (*flag != blk) std::this_thread::sleep_for(std::chrono::microseconds(50));
