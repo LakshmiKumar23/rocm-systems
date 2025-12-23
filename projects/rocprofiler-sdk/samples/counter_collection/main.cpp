@@ -42,14 +42,37 @@
 __global__ void
 kernelA(int* flag)
 {
-    for (int i=0; i<10000; i++) asm volatile("s_sleep 63"); // 2us * 1000 * 100 = 200ms
+    __syncthreads();
+    if (threadIdx.x == 0) atomicAdd(flag, 1);
+    asm volatile("s_dcache_wb; s_waitcnt lgkmcnt(0)");
+    __syncthreads();
+
+    int result = 1;
+    while (result != 0)
+    {
+        for (int i=0; i<25; i++) asm volatile("s_sleep 63"); // 50us
+
+        asm volatile("s_dcache_inv; "
+                     "s_waitcnt lgkmcnt(0)");
+        asm volatile("s_load_dword %0, %1, 0" : "=r"(result) : "r"(flag));
+        asm volatile("s_waitcnt lgkmcnt(0)");
+    }
+}
+
+int* flag = nullptr;
+
+void LaunchAndConfirm()
+{
+    int thr = 256;
+    int blk = 1;
+    *flag = 0;
+    hipLaunchKernelGGL(kernelA, blk, thr, 0, 0, (int*)flag);
+    while (*flag != blk) std::this_thread::sleep_for(std::chrono::microseconds(50));
 }
 
 int
 main(int argc, char** argv)
 {
-    int thr = 256;
-    int blk = 256;
     int ntotdevice = 0;
     HIP_CALL(hipGetDeviceCount(&ntotdevice));
 
@@ -58,27 +81,34 @@ main(int argc, char** argv)
     [[maybe_unused]] hipDeviceProp_t devProp;
     HIP_CALL(hipGetDeviceProperties(&devProp, 0));
 
+    HIP_CALL(hipMallocHost((void**)&flag, 4096));
     HIP_CALL(hipDeviceSynchronize());
 
     std::cout << "Start before kernel, read after kernel: " << std::endl;
     start();
-    hipLaunchKernelGGL(kernelA, blk, thr, 0, 0, nullptr);
+    LaunchAndConfirm();
+    *flag = 0;
     HIP_CALL(hipDeviceSynchronize());
     read();
     
     std::cout << "Start before kernel, read during kernel: " << std::endl;
     start();
-    hipLaunchKernelGGL(kernelA, blk, thr, 0, 0, nullptr);
-    std::this_thread::sleep_for(std::chrono::microseconds(100));
+    LaunchAndConfirm();
     read();
+    *flag = 0;
     HIP_CALL(hipDeviceSynchronize());
 
     std::cout << "Start during kernel, read after kernel: " << std::endl;
-    hipLaunchKernelGGL(kernelA, blk, thr, 0, 0, nullptr);
-    std::this_thread::sleep_for(std::chrono::microseconds(100));
+    LaunchAndConfirm();
     start();
+    *flag = 0;
     HIP_CALL(hipDeviceSynchronize()); 
     read();
-
+    
+    std::cout << "Start during kernel, read during kernel: " << std::endl;
+    LaunchAndConfirm();
+    start();
+    read();
+    *flag = 0;
     HIP_CALL(hipDeviceSynchronize());
 }

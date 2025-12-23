@@ -426,7 +426,7 @@ tool_init(rocprofiler_client_finalize_t fini_func, void*)
 
             auto status = sampler->read_counter_values(records);
     
-            std::clog << "Sample " << count << ":\n";
+            //std::clog << "Sample " << count << ":\n";
 
             if(status == ROCPROFILER_STATUS_SUCCESS)
             {
@@ -438,8 +438,8 @@ tool_init(rocprofiler_client_finalize_t fini_func, void*)
                     auto recname = sampler->decode_record_name(record);
                     values[recname] += record.counter_value;
                 }
-                for(const auto& [name, value] : values)
-                    std::clog << "\tCounter: " << name << " Value: " << value << "\n";
+                //for(const auto& [name, value] : values)
+                //    std::clog << "\tCounter: " << name << " Value: " << value << "\n";
             }
             bread.store(false);
         }

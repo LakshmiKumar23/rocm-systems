@@ -62,6 +62,7 @@ start()
 {
     return 1;
 }
+void read(){}
 
 namespace
 {
