@@ -379,6 +379,7 @@ read_agent_ctx(const context::context*                    ctx,
         callback_data.user_data = user_data;
         submitPacket(agent->profile_queue(), &barrier.barrier_and);
         wait_if_sync();
+        ROCP_TRACE << "Packet submission: success";
         if((flags & ROCPROFILER_COUNTER_FLAG_ASYNC) == 0) callback_data.cached_counters = nullptr;
     }
 
@@ -522,6 +523,7 @@ start_agent_ctx(const context::context* ctx)
 
             if(lock_status == ROCPROFILER_STATUS_SUCCESS)
             {
+                ROCP_INFO << "Device locked: " << callback_data.agent_id.handle;
                 callback_data.device_locked = true;
             }
             else
@@ -529,9 +531,14 @@ start_agent_ctx(const context::context* ctx)
                 ROCP_WARNING << fmt::format("Failed to lock device for agent {} with status {}.",
                                             callback_data.agent_id.handle,
                                             rocprofiler_get_status_string(lock_status));
+
+                // Device locking should be enforced only when the driver supports it.
+                if(lock_status != ROCPROFILER_STATUS_ERROR_INCOMPATIBLE_ABI)
+                    return ROCPROFILER_STATUS_ERROR_OUT_OF_RESOURCES;
             }
         }
 
+        ROCP_TRACE << "Submit start packet...";
         callback_data.packet->packets.start_packet.completion_signal = callback_data.start_signal;
         hsa::get_core_table()->hsa_signal_store_relaxed_fn(callback_data.start_signal, 1);
         submitPacket(agent->profile_queue(), &callback_data.packet->packets.start_packet);
@@ -542,6 +549,7 @@ start_agent_ctx(const context::context* ctx)
                                                           0,
                                                           UINT64_MAX,
                                                           HSA_WAIT_STATE_ACTIVE);
+        ROCP_TRACE << "Packet submission: success";
     }
 
     agent_ctx.status.exchange(rocprofiler::context::device_counting_service::state::ENABLED);
@@ -588,6 +596,7 @@ stop_agent_ctx(const context::context* ctx)
 
         if(!callback_data.profile->reqired_hw_counters.empty())
         {
+            ROCP_TRACE << "Submit stop packet...";
             // Remove when AQL is updated to not require stop to be called first
             submitPacket(agent->profile_queue(), &callback_data.packet->packets.stop_packet);
         }
@@ -598,9 +607,11 @@ stop_agent_ctx(const context::context* ctx)
                                                           1,
                                                           UINT64_MAX,
                                                           HSA_WAIT_STATE_ACTIVE);
+        ROCP_TRACE << "Packet submission: success";
 
         if(callback_data.device_locked && counter_collection_has_device_lock())
         {
+            ROCP_INFO << "Unlocking device.";
             auto unlock_status = counter_collection_device_unlock(callback_data.profile->agent);
             callback_data.device_locked = false;
 
