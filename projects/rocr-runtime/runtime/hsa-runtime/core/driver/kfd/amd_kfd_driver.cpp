@@ -42,6 +42,7 @@
 
 #include "core/inc/amd_kfd_driver.h"
 
+#include <cassert>
 #include <memory>
 #include <string>
 
@@ -415,17 +416,6 @@ hsa_status_t KfdDriver::AllocQueueGWS(HSA_QUEUEID queue_id, uint32_t num_gws,
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t KfdDriver::GetShareableHandle(void* va, void* mem, size_t size,
-                                           core::ShareableHandle* handle) {
-  uint64_t mem_handle;
-  HSAKMT_STATUS status = HSAKMT_CALL(hsaKmtGetMemoryHandle(va, mem, size, &mem_handle));
-  if (status != HSAKMT_STATUS_SUCCESS) {
-    return HSA_STATUS_ERROR;
-  }
-  handle->handle = mem_handle;
-  return HSA_STATUS_SUCCESS;
-}
-
 hsa_status_t KfdDriver::ExportDMABuf(void *mem, size_t size, int *dmabuf_fd,
                                      size_t *offset) {
   int dmabuf_fd_res = -1;
@@ -439,59 +429,128 @@ hsa_status_t KfdDriver::ExportDMABuf(void *mem, size_t size, int *dmabuf_fd,
     return HSA_STATUS_ERROR_OUT_OF_RESOURCES;
   }
 
+  assert(offset_res == 0);
+
   *dmabuf_fd = dmabuf_fd_res;
   *offset = offset_res;
 
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t KfdDriver::ImportDMABuf(int dmabuf_fd, core::Agent &agent,
-                                     core::ShareableHandle &handle) {
-  auto& gpu_agent = static_cast<GpuAgent&>(agent);
+hsa_status_t KfdDriver::ImportDMABuf(int dmabuf_fd, const core::Agent& agent,
+                                     core::ShareableHandle* handle) {
+  const auto& gpu_agent = static_cast<const GpuAgent&>(agent);
   amdgpu_bo_import_result res;
   auto ret = DRM_CALL(
       amdgpu_bo_import(gpu_agent.libDrmDev(), amdgpu_bo_handle_type_dma_buf_fd, dmabuf_fd, &res));
   if (ret) return HSA_STATUS_ERROR;
 
-  handle.handle = reinterpret_cast<uint64_t>(res.buf_handle);
+  *handle = core::ShareableHandle{reinterpret_cast<uint64_t>(res.buf_handle)};
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t KfdDriver::Map(core::ShareableHandle handle, void *mem,
-                            size_t offset, size_t size,
+hsa_status_t KfdDriver::DestroyImportedShareableHandle(core::ShareableHandle* handle) {
+  // Calls DestroyShareableHandle, as an amdgpu_bo_handle object is created during ImportDMABuf.
+  return KfdDriver::DestroyShareableHandle(handle);
+}
+
+hsa_status_t KfdDriver::Map(core::ShareableHandle handle, void* mem, size_t offset, size_t size,
                             hsa_access_permission_t perms) {
   const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
   if (!ldrm_bo)
     return HSA_STATUS_ERROR;
 
   if (DRM_CALL(amdgpu_bo_va_op(ldrm_bo, offset, size, reinterpret_cast<uint64_t>(mem),
-                      drm_perm(perms), AMDGPU_VA_OP_MAP)) != 0)
+                               drm_perm(perms), AMDGPU_VA_OP_MAP)) != 0)
     return HSA_STATUS_ERROR;
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t KfdDriver::Unmap(core::ShareableHandle handle, void *mem,
-                              size_t offset, size_t size) {
+hsa_status_t KfdDriver::Unmap(core::ShareableHandle handle, void* mem, size_t offset, size_t size) {
   const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
-  if (!ldrm_bo)
-    return HSA_STATUS_ERROR;
+  if (!ldrm_bo) return HSA_STATUS_ERROR;
 
   if (DRM_CALL(amdgpu_bo_va_op(ldrm_bo, offset, size, reinterpret_cast<uint64_t>(mem), 0,
-                      AMDGPU_VA_OP_UNMAP)) != 0)
+                               AMDGPU_VA_OP_UNMAP)) != 0)
     return HSA_STATUS_ERROR;
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t KfdDriver::ReleaseShareableHandle(core::ShareableHandle &handle) {
-  const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
-  if (!ldrm_bo)
-    return HSA_STATUS_ERROR;
+hsa_status_t KfdDriver::CreateShareableHandle(void* va, void* mem, size_t size,
+                                              const core::Agent& agent,
+                                              core::ShareableHandle* handle, uint64_t* offset,
+                                              int* drm_fd, uint64_t* drm_fd_offset) {
+  // Create handle by exporting and importing the memory from the owning agent.
+
+  // Export memory.
+  int dmabuf_fd = 0;
+  uint64_t tmp_offset = 0;
+  hsa_status_t err = KfdDriver::ExportDMABuf(mem, size, &dmabuf_fd, &tmp_offset);
+  if (err != HSA_STATUS_SUCCESS) return err;
+
+  // Close fd.
+  MAKE_NAMED_SCOPE_GUARD(dmabuf_fd_guard, [&] {
+    if (dmabuf_fd != -1) {
+      close(dmabuf_fd);
+    }
+  });
+
+  // Import memory.
+  core::ShareableHandle tmp_handle;
+  err = KfdDriver::ImportDMABuf(dmabuf_fd, agent, &tmp_handle);
+  if (err != HSA_STATUS_SUCCESS) return err;
+
+  // Get address that memory is mapped to.
+  if (tmp_handle.IsValid()) {
+#if defined(__linux__)
+    auto* amdgpu_device_get_fd_func = core::Runtime::GetAmdgpuRenderFdFunc();
+
+    int renderFd = amdgpu_device_get_fd_func(static_cast<const GpuAgent&>(agent).libDrmDev());
+    if (renderFd < 0) return HSA_STATUS_ERROR;
+
+    uint32_t gem_handle = 0;
+    if (DRM_CALL(amdgpu_bo_export(reinterpret_cast<amdgpu_bo_handle>(tmp_handle.handle),
+                                  amdgpu_bo_handle_type_kms, &gem_handle)))
+      return HSA_STATUS_ERROR;
+
+    union drm_amdgpu_gem_mmap args;
+    memset(&args, 0, sizeof(args));
+    /* Query the buffer address (args.addr_ptr).
+     * The kernel driver ignores the offset and size parameters. */
+    args.in.handle = gem_handle;
+    if (DRM_CALL(drmCommandWriteRead(renderFd, DRM_AMDGPU_GEM_MMAP, &args, sizeof(args))))
+      return HSA_STATUS_ERROR;
+
+    *drm_fd = renderFd;
+    *drm_fd_offset = args.out.addr_ptr;
+#else
+    assert(!"Unimplemented!");
+    *drm_fd = 0;
+    *drm_fd_offset = 0;
+#endif
+  } else {
+    HSAKMT_STATUS status = HSAKMT_CALL(hsaKmtGetMemoryHandle(va, mem, size, &tmp_handle.handle));
+    if (status != HSAKMT_STATUS_SUCCESS) return HSA_STATUS_ERROR;
+
+    *drm_fd = 0;
+    *drm_fd_offset = reinterpret_cast<uintptr_t>(va);
+  }
+
+  *handle = tmp_handle;
+  *offset = tmp_offset;
+
+  return HSA_STATUS_SUCCESS;
+}
+
+hsa_status_t KfdDriver::DestroyShareableHandle(core::ShareableHandle* handle) {
+  const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle->handle);
+  if (!ldrm_bo) return HSA_STATUS_ERROR;
 
   const auto ret = DRM_CALL(amdgpu_bo_free(ldrm_bo));
   if (ret)
     return HSA_STATUS_ERROR;
 
-  handle = {};
+  *handle = {};
   return HSA_STATUS_SUCCESS;
 }
 

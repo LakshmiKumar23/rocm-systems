@@ -493,6 +493,11 @@ hsa_status_t KfdVirtioDriver::ImportDMABuf(int dmabuf_fd, core::Agent& agent,
   return HSA_STATUS_SUCCESS;
 }
 
+hsa_status_t KfdVirtioDriver::DestroyImportedShareableHandle(core::ShareableHandle* handle) {
+  // Calls DestroyShareableHandle, as an amdgpu_bo_handle object is created during ImportDMABuf.
+  return KfdDriver::DestroyShareableHandle(handle);
+}
+
 hsa_status_t KfdVirtioDriver::Map(core::ShareableHandle handle, void* mem, size_t offset,
                                   size_t size, hsa_access_permission_t perms) {
   const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
@@ -519,7 +524,14 @@ hsa_status_t KfdVirtioDriver::Unmap(core::ShareableHandle handle, void* mem, siz
   return HSA_STATUS_SUCCESS;
 }
 
-hsa_status_t KfdVirtioDriver::ReleaseShareableHandle(core::ShareableHandle& handle) {
+hsa_status_t KfdVirtioDriver::CreateShareableHandle(void* va, void* mem, size_t size,
+                                                    const core::Agent& agent,
+                                                    core::ShareableHandle* handle, uint64_t* offset,
+                                                    int* drm_fd, uint64_t* drm_fd_offset) {
+  return HSA_STATUS_ERROR;
+}
+
+hsa_status_t KfdVirtioDriver::DestroyShareableHandle(core::ShareableHandle* handle) {
   const auto ldrm_bo = reinterpret_cast<amdgpu_bo_handle>(handle.handle);
   if (!ldrm_bo)
     return HSA_STATUS_ERROR;
@@ -547,7 +559,6 @@ hsa_status_t KfdVirtioDriver::SPMSetDestBuffer(uint32_t node_id, uint32_t size, 
                                                bool* is_data_loss) const {
   return HSA_STATUS_ERROR;
 }
-
 
 hsa_status_t KfdVirtioDriver::OpenSMI(uint32_t node_id, int* fd) const { return HSA_STATUS_ERROR; }
 

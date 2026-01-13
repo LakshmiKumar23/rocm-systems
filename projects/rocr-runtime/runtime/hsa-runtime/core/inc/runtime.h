@@ -155,6 +155,11 @@ class Runtime {
   // @brief Print known allocations near ptr.
   static void PrintMemoryMapNear(void* ptr);
 
+  using amdgpu_render_fd_func_t = int (*)(HsaAMDGPUDeviceHandle);
+
+  /// @brief Returns a function that translates an @ref HsaAMDGPUDeviceHandle to a render fd.
+  static amdgpu_render_fd_func_t GetAmdgpuRenderFdFunc();
+
   /// @brief Singleton object of the runtime.
   static Runtime* runtime_singleton_;
 
@@ -907,8 +912,6 @@ class Runtime {
 
  private:
   void CheckVirtualMemApiSupport();
-  int GetAmdgpuDeviceArgs(Agent *agent, ShareableHandle handle, int *drm_fd,
-                          uint64_t *cpu_addr);
 
   bool virtual_mem_api_supported_;
   bool xnack_enabled_;
@@ -979,8 +982,6 @@ class Runtime {
     MappedHandle(MemoryHandle* mem_handle, AddressHandle* address_handle, void* va,
                  uint64_t offset, size_t size, int drm_fd, void *drm_cpu_addr,
                  hsa_access_permission_t perm, ShareableHandle shareable_handle);
-
-    MappedHandle() {}
 
     __forceinline core::Agent* agentOwner() const { return mem_handle->region->owner(); }
 
