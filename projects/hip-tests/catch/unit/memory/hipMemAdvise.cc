@@ -24,6 +24,8 @@ THE SOFTWARE.
 #include <utils.hh>
 #include <resource_guards.hh>
 
+#include <catch2/matchers/catch_matchers_vector.hpp>
+
 static inline hipMemoryAdvise GetUnsetMemAdvice(const hipMemoryAdvise advice) {
   switch (advice) {
     case hipMemAdviseSetAccessedBy:

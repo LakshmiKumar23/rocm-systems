@@ -30,6 +30,10 @@ THE SOFTWARE.
 #include <cmath>
 #include <iostream>
 #include <ios>
+#include <iomanip>
+
+#include <catch2/generators/catch_generators_adapters.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #define MASK_SHIFT(x, n) \
   (x & (static_cast<uint64_t>(1) << n)) >> n

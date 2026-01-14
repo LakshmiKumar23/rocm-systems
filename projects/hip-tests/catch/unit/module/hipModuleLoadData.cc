@@ -20,6 +20,7 @@ THE SOFTWARE.
 #include "hip_module_common.hh"
 
 #include <hip_test_common.hh>
+#include <hip_test_features.hh>
 #include <hip/hip_runtime_api.h>
 #include <hip_test_defgroups.hh>
 #include <fstream>

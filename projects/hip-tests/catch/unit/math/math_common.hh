@@ -30,6 +30,8 @@ THE SOFTWARE.
 #include "thread_pool.hh"
 #include "validators.hh"
 
+#include <iomanip>
+
 namespace cg = cooperative_groups;
 
 template <typename T, typename U>

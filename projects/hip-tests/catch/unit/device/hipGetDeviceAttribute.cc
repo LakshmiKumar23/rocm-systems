@@ -22,6 +22,7 @@ THE SOFTWARE.
 #include <unistd.h>
 #endif
 
+#include <iomanip>
 #include <array>
 #include <iostream>
 

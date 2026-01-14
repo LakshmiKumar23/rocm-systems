@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #include <hip_test_common.hh>
 
+#include <iomanip>
 #include "kernels.hh"
 #include "test_fixture.hh"
 

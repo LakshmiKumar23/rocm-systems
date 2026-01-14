@@ -27,6 +27,8 @@ THE SOFTWARE.
 
 #include "graph_tests_common.hh"
 
+#include <catch2/catch_template_test_macros.hpp>
+
 /**
  * @addtogroup hipGraphAddMemcpyNode1D hipGraphAddMemcpyNode1D
  * @{

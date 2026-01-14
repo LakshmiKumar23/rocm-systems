@@ -39,6 +39,7 @@ are ignored and hipExtStreamCreateWithCUMask must return hipSuccess.
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include <iomanip>
 #include <vector>
 
 #define NUM_CU_PARTITIONS 4

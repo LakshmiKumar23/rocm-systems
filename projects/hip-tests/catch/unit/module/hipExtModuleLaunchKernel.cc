@@ -40,6 +40,7 @@ THE SOFTWARE.
  * passed to kernel params or extra arguments.
  */
 #include <hip_test_common.hh>
+#include <hip_test_features.hh>
 #include <hip_test_defgroups.hh>
 #include <math.h>
 #include <iostream>

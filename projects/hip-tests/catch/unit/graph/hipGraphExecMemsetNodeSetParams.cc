@@ -19,12 +19,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-#include <functional>
-
 #include <hip_test_common.hh>
+
+#include <cstdint>
+#include <functional>
 
 #include "graph_memset_node_test_common.hh"
 #include "graph_tests_common.hh"
+
+#include <catch2/catch_template_test_macros.hpp>
+
 
 /**
  * @addtogroup hipGraphExecMemsetNodeSetParams hipGraphExecMemsetNodeSetParams

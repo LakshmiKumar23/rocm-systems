@@ -30,7 +30,6 @@ This file verifies the following scenarios of hipMemcpy2DFromArrayAsync API
 #include <hip_test_common.hh>
 #include <hip_test_checkers.hh>
 
-
 static constexpr auto NUM_W{10};
 static constexpr auto NUM_H{10};
 

@@ -31,6 +31,8 @@ THE SOFTWARE.
 #include <utils.hh>
 #include <resource_guards.hh>
 
+#include <catch2/generators/catch_generators_range.hpp>
+
 using PtrVariant = std::variant<hipPitchedPtr, hipArray_t>;
 
 static inline hipMemcpyKind ReverseMemcpyDirection(const hipMemcpyKind direction) {

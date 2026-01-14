@@ -22,6 +22,8 @@ THE SOFTWARE.
 #include <resource_guards.hh>
 #include <hip/hip_complex.h>
 
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
 template <typename T>
 __host__ __device__ T MakeComplexType(decltype(T().x) input_val1, decltype(T().x) input_val2) {
   if constexpr (std::is_same_v<T, hipFloatComplex>) {

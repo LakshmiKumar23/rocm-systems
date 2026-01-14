@@ -29,6 +29,8 @@ THE SOFTWARE.
 #include <resource_guards.hh>
 #include <utils.hh>
 
+#include <catch2/generators/catch_generators_range.hpp>
+
 static inline unsigned int GenerateLinearAllocationFlagCombinations(
     const LinearAllocs allocation_type) {
   switch (allocation_type) {

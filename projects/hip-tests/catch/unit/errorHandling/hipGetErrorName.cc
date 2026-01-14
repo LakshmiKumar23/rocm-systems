@@ -24,6 +24,8 @@ THE SOFTWARE.
 
 #include "error_handling_common.hh"
 
+#include <catch2/matchers/catch_matchers_string.hpp>
+
 /**
  * @addtogroup hipGetErrorName hipGetErrorName
  * @{

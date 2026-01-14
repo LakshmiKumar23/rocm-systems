@@ -22,6 +22,8 @@ THE SOFTWARE.
 
 #include <hip_test_common.hh>
 
+#include <iomanip>
+
 /**
  * @addtogroup hipGetDeviceProperties hipGetDeviceProperties
  * @{

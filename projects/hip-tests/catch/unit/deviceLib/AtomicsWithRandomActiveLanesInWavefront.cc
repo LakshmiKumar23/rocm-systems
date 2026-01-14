@@ -36,6 +36,8 @@ THE SOFTWARE.
 
 #include <hip_test_common.hh>
 
+#include <catch2/catch_approx.hpp>
+
 using namespace std;
 
 ////////////////////////////////////////////////////////////////////////////////

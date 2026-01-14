@@ -24,17 +24,18 @@ THE SOFTWARE.
 #pragma clang diagnostic ignored "-Wsign-compare"
 #include "hip_test_context.hh"
 
-#include <catch2/catch_all.hpp>
+#include <catch2/catch_test_macros.hpp>                  // TEST_CASE
+#include <catch2/catch_template_test_macros.hpp>         // TEMPALTE_TEST_CASE
+#include <catch2/generators/catch_generators.hpp>        // GENERATE
+#include <catch2/generators/catch_generators_range.hpp>  // range
+
 #include <atomic>
 #include <chrono>
 #include <cstring>
 #include <cstdlib>
 #include <iostream>
-#include <iomanip>
-#include <mutex>
 #include <cstdlib>
 #include <thread>
-#include "hip_test_features.hh"
 
 #if HT_LINUX
 #include <sys/resource.h>

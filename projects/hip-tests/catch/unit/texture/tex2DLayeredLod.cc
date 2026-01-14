@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 #include "kernels.hh"
 #include "test_fixture.hh"
+#include <iomanip>
 
 /**
  * @addtogroup tex2DLayeredLod tex2DLayeredLod

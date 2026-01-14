@@ -21,6 +21,7 @@ THE SOFTWARE.
 */
 
 #include <hip_test_common.hh>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 /**
  * @addtogroup hipApiName hipApiName

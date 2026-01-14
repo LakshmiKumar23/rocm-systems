@@ -24,6 +24,8 @@
 #include <hip_test_common.hh>
 #include <iostream>
 
+#include <catch2/catch_session.hpp>
+
 CmdOptions cmd_options;
 
 int main(int argc, char** argv) {

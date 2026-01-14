@@ -19,6 +19,7 @@ THE SOFTWARE.
 #include "hip_module_common.hh"
 #include <array>
 #include <hip_test_common.hh>
+#include <hip_test_features.hh>
 #include <hip_test_defgroups.hh>
 /**
  * @addtogroup hipModuleLoadFatBinary hipModuleLoadFatBinary

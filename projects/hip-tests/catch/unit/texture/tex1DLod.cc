@@ -25,6 +25,8 @@ THE SOFTWARE.
 #include "kernels.hh"
 #include "test_fixture.hh"
 
+#include <iomanip>
+
 /**
  * @addtogroup tex1DLod tex1DLod
  * @{

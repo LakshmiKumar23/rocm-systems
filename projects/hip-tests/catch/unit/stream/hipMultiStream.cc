@@ -19,6 +19,8 @@ THE SOFTWARE.
 #include <hip_test_common.hh>
 #include <iostream>
 #include <vector>
+#include <catch2/catch_approx.hpp>
+
 constexpr int NN = 1 << 21;
 __global__ void kernel_do_nothing(__attribute__((unused)) int a) {
   // empty kernel
