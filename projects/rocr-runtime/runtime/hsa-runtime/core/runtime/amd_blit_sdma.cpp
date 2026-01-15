@@ -327,6 +327,9 @@ hsa_status_t BlitSdma<useGCR>::SubmitCommand(const void* cmd, size_t cmd_size, u
                                              const std::vector<core::Signal*>& dep_signals,
                                              core::Signal& out_signal,
                                              std::vector<core::Signal*>& gang_signals) {
+  // fprintf(stderr, "[ROCR][SDMA][SubmitCommand] enter: cmd_size=%zu size=%llu dep_signals.size=%zu\\n",
+  //         cmd_size, (unsigned long long)size, dep_signals.size());
+  // fflush(stderr);
   uint32_t num_poll_command = 0;
   uint32_t num_poll_signals = 0;
 
