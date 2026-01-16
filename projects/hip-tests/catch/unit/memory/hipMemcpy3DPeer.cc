@@ -18,7 +18,6 @@
  */
 #include <hip_test_common.hh>
 #include <hip_test_defgroups.hh>
-
 /*@addtogroup hipMemcpy3DPeer hipMemcpy3DPeer* @{
  *@ingroup MemoryTest* `hipError_t hipMemcpy3DPeer(hipMemcpy3DPeerParms* p)` -
  *Performs 3D memory copies between devices.
