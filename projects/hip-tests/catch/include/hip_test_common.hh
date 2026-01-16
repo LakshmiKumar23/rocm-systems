@@ -25,7 +25,7 @@ THE SOFTWARE.
 #include "hip_test_context.hh"
 
 #include <catch2/catch_test_macros.hpp>                  // TEST_CASE
-#include <catch2/catch_template_test_macros.hpp>         // TEMPALTE_TEST_CASE
+#include <catch2/catch_template_test_macros.hpp>         // TEMPLATE_TEST_CASE
 #include <catch2/generators/catch_generators.hpp>        // GENERATE
 #include <catch2/generators/catch_generators_range.hpp>  // range
 
