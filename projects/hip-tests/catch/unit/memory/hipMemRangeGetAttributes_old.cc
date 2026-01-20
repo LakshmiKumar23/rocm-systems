@@ -147,9 +147,13 @@ TEST_CASE("Unit_hipMemRangeGetAttributes_TstFlgs") {
 
     HIP_CHECK(hipFree(Hmm));
     HIP_CHECK(hipStreamDestroy(strm));
-    delete[] AcsdBy;
+    delete AcsdBy;
     for (int i = 0; i < 4; ++i) {
-      delete Outpt[i];
+      if (i == 2) {
+        delete[] Outpt[i];
+      } else {
+        delete Outpt[i];
+      }
     }
     REQUIRE(IfTestPassed);
   } else {
@@ -287,7 +291,11 @@ TEST_CASE("Unit_hipMemRangeGetAttributes_NegativeTst") {
       }
     }
     for (int i = 0; i < 4; ++i) {
-      delete Outpt[i];
+      if (i == 2) {
+        delete[] Outpt[i];
+      } else {
+        delete Outpt[i];
+      }
     }
     REQUIRE(IfTestPassed);
 

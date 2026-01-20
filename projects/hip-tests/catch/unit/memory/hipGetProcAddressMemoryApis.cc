@@ -5620,8 +5620,13 @@ TEST_CASE("Unit_hipGetProcAddress_MemoryApisManagedMemory") {
     }
 
     for (int i = 0; i < num_attributes; i++) {
-      delete data[i];
-      delete dataWithFuncPtr[i];
+      if (i == 2) {
+        delete[] data[i];
+        delete[] dataWithFuncPtr[i];
+      } else {
+        delete data[i];
+        delete dataWithFuncPtr[i];
+      }
     }
 
     HIP_CHECK(hipFree(memPtr));
