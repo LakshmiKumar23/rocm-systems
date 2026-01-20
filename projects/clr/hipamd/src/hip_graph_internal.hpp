@@ -1924,7 +1924,7 @@ class GraphMemcpyNode1D : public GraphMemcpyNode {
       WorkerThreadLock_.lock();
     }
 
-    hip::MemcpyType type;
+    hip::MemcpyType type = hipHostToHost;
     size_t dOffset, sOffset;
     amd::Memory* dstMemory = getMemoryObject(dst_, dOffset);
     amd::Memory* srcMemory = getMemoryObject(src_, sOffset);
@@ -1939,7 +1939,19 @@ class GraphMemcpyNode1D : public GraphMemcpyNode {
     } else if (dstMemory != nullptr && srcMemory == nullptr) {
       status = ihipMemcpyCommand(command, dstMemory, src_, count_, kind_, *stream, dOffset);
       type = ihipGetMemcpyType(src_, dstMemory);
+    } else {
+      if (!AMD_DIRECT_DISPATCH) {
+        WorkerThreadLock_.unlock();
+      }
+      return hipErrorInvalidValue;
     }
+    if (status != hipSuccess || command == nullptr) {
+      if (!AMD_DIRECT_DISPATCH) {
+        WorkerThreadLock_.unlock();
+      }
+      return (status != hipSuccess) ? status : hipErrorOutOfMemory;
+    }
+    assert(type != hipHostToHost && "This type should be handled by returning an error code");
 
     if (type == hipCopyBuffer) {
       amd::CopyMemoryCommand* cpycmd = reinterpret_cast<amd::CopyMemoryCommand*>(command);
@@ -2089,7 +2101,7 @@ class GraphMemcpyNode1D : public GraphMemcpyNode {
   }
   virtual bool GraphCaptureEnabled() override {
     if (parentGraph_ != nullptr && parentGraph_->IsSegmentSchedulingEnabled()) {
-      hip::MemcpyType type;
+      hip::MemcpyType type = hipHostToHost;
 
       size_t dOffset, sOffset;
       amd::Memory* dstMemory = getMemoryObject(dst_, dOffset);
@@ -2099,14 +2111,9 @@ class GraphMemcpyNode1D : public GraphMemcpyNode {
       // which is only valid for device to device copies.
       if (dstMemory != nullptr && srcMemory != nullptr) {
         type = ihipGetMemcpyType(srcMemory, dstMemory, kind_);
-      }
-
-      switch (type) {
-        case hipCopyBuffer:
-          return true;
-          break;
-        default:
-          break;
+        return (type == hipCopyBuffer);
+      } else {
+        return false;
       }
     }
     return false;

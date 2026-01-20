@@ -474,7 +474,7 @@ hipError_t ihipMemcpy_validate_memory(amd::Memory* memObj, size_t sizeBytes, siz
   }
 
   // Size validation
-  if (sizeBytes > (memObj->getSize() - offset)) {
+  if (offset > memObj->getSize() || sizeBytes > (memObj->getSize() - offset)) {
     return hipErrorInvalidValue;
   }
   return hipSuccess;
@@ -698,6 +698,9 @@ hipError_t ihipMemcpy(void* dst, const void* src, size_t sizeBytes, hipMemcpyKin
 
   amd::Command* command = nullptr;
   if (srcDeviceMemory == nullptr && dstDeviceMemory == nullptr) {
+    if (kind != hipHostToHost) {
+      return hipErrorInvalidValue;
+    }
     ihipHtoHMemcpy(dst, src, sizeBytes, stream);
     return hipSuccess;
   } else if (dstDeviceMemory == nullptr || srcDeviceMemory == nullptr) {
@@ -753,7 +756,8 @@ hipError_t ihipMemcpy(void* dst, const void* src, size_t sizeBytes, hipMemcpyKin
   if (!isHostAsync) {
     command->queue()->finishCommand(command);
   } else if (!isGPUAsync) {
-    hip::Stream* pStream = hip::getNullStream(dstDeviceMemory->GetDeviceById()->context());
+    amd::Memory* syncMemory = (dstDeviceMemory != nullptr) ? dstDeviceMemory : srcDeviceMemory;
+    hip::Stream* pStream = hip::getNullStream(syncMemory->GetDeviceById()->context());
     amd::Command::EventWaitList waitList;
     waitList.push_back(command);
     amd::Command* depdentMarker = new amd::Marker(*pStream, false, waitList);
