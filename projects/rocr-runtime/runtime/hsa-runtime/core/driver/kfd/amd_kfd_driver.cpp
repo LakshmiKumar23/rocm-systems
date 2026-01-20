@@ -480,6 +480,7 @@ hsa_status_t KfdDriver::CreateShareableHandle(void* va, void* mem, size_t size,
                                               const core::Agent& agent,
                                               core::ShareableHandle* handle, uint64_t* offset,
                                               int* drm_fd, uint64_t* drm_fd_offset) {
+#if defined(__linux__)
   // Create handle by exporting and importing the memory from the owning agent.
 
   // Export memory.
@@ -488,53 +489,40 @@ hsa_status_t KfdDriver::CreateShareableHandle(void* va, void* mem, size_t size,
   hsa_status_t err = KfdDriver::ExportDMABuf(mem, size, &dmabuf_fd, &tmp_offset);
   if (err != HSA_STATUS_SUCCESS) return err;
 
-  // Close fd.
-  MAKE_NAMED_SCOPE_GUARD(dmabuf_fd_guard, [&] {
-    if (dmabuf_fd != -1) {
-      close(dmabuf_fd);
-    }
-  });
-
   // Import memory.
   core::ShareableHandle tmp_handle;
   err = KfdDriver::ImportDMABuf(dmabuf_fd, agent, &tmp_handle);
+  close(dmabuf_fd);
   if (err != HSA_STATUS_SUCCESS) return err;
 
   // Get address that memory is mapped to.
-  if (tmp_handle.IsValid()) {
-#if defined(__linux__)
-    auto* amdgpu_device_get_fd_func = core::Runtime::GetAmdgpuRenderFdFunc();
+  auto* amdgpu_device_get_fd_func = core::Runtime::GetAmdgpuRenderFdFunc();
 
-    int renderFd = amdgpu_device_get_fd_func(static_cast<const GpuAgent&>(agent).libDrmDev());
-    if (renderFd < 0) return HSA_STATUS_ERROR;
+  int renderFd = amdgpu_device_get_fd_func(static_cast<const GpuAgent&>(agent).libDrmDev());
+  if (renderFd < 0) return HSA_STATUS_ERROR;
 
-    uint32_t gem_handle = 0;
-    if (DRM_CALL(amdgpu_bo_export(reinterpret_cast<amdgpu_bo_handle>(tmp_handle.handle),
-                                  amdgpu_bo_handle_type_kms, &gem_handle)))
-      return HSA_STATUS_ERROR;
+  uint32_t gem_handle = 0;
+  if (DRM_CALL(amdgpu_bo_export(reinterpret_cast<amdgpu_bo_handle>(tmp_handle.handle),
+                                amdgpu_bo_handle_type_kms, &gem_handle)))
+    return HSA_STATUS_ERROR;
 
-    union drm_amdgpu_gem_mmap args;
-    memset(&args, 0, sizeof(args));
-    /* Query the buffer address (args.addr_ptr).
-     * The kernel driver ignores the offset and size parameters. */
-    args.in.handle = gem_handle;
-    if (DRM_CALL(drmCommandWriteRead(renderFd, DRM_AMDGPU_GEM_MMAP, &args, sizeof(args))))
-      return HSA_STATUS_ERROR;
+  union drm_amdgpu_gem_mmap args;
+  memset(&args, 0, sizeof(args));
+  /* Query the buffer address (args.addr_ptr).
+   * The kernel driver ignores the offset and size parameters. */
+  args.in.handle = gem_handle;
+  if (DRM_CALL(drmCommandWriteRead(renderFd, DRM_AMDGPU_GEM_MMAP, &args, sizeof(args))))
+    return HSA_STATUS_ERROR;
 
-    *drm_fd = renderFd;
-    *drm_fd_offset = args.out.addr_ptr;
+  *drm_fd = renderFd;
+  *drm_fd_offset = args.out.addr_ptr;
 #else
-    assert(!"Unimplemented!");
-    *drm_fd = 0;
-    *drm_fd_offset = 0;
-#endif
-  } else {
-    HSAKMT_STATUS status = HSAKMT_CALL(hsaKmtGetMemoryHandle(va, mem, size, &tmp_handle.handle));
-    if (status != HSAKMT_STATUS_SUCCESS) return HSA_STATUS_ERROR;
+  HSAKMT_STATUS status = HSAKMT_CALL(hsaKmtGetMemoryHandle(va, mem, size, &tmp_handle.handle));
+  if (status != HSAKMT_STATUS_SUCCESS) return HSA_STATUS_ERROR;
 
-    *drm_fd = 0;
-    *drm_fd_offset = reinterpret_cast<uintptr_t>(va);
-  }
+  *drm_fd = 0;
+  *drm_fd_offset = reinterpret_cast<uintptr_t>(va);
+#endif
 
   *handle = tmp_handle;
   *offset = tmp_offset;
