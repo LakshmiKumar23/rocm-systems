@@ -37,10 +37,17 @@
 
 namespace hipDeviceGetPCIBusIdTests {
 
-void getPciBusId(int deviceCount, char** hipDeviceList) {
-  for (int i = 0; i < deviceCount; i++) {
-    HIP_CHECK(hipDeviceGetPCIBusId(hipDeviceList[i], MAX_DEVICE_LENGTH, i));
+std::vector<std::string> getPciBusId(int deviceCount) {
+  std::vector<std::string> hipDeviceList;
+  hipDeviceList.reserve(deviceCount);
+
+  for(int i = 0; i < deviceCount; i++) {
+    // initialize all the string with null-characters
+    std::string deviceId(MAX_DEVICE_LENGTH, 0);
+    HIP_CHECK(hipDeviceGetPCIBusId(deviceId.data(), deviceId.size(), i));
+    hipDeviceList.emplace_back(std::move(deviceId));
   }
+  return hipDeviceList;
 }
 }  // namespace hipDeviceGetPCIBusIdTests
 
@@ -62,28 +69,23 @@ TEST_CASE("Unit_hipDeviceGetPCIBusId_Check_PciBusID_WithAttr") {
   REQUIRE_FALSE(deviceCount == 0);
   printf("No.of gpus in the system: %d\n", deviceCount);
   // Allocate an array of pointer to characters
-  char** hipDeviceList = new char*[deviceCount];
+  std::vector<std::string> hipDeviceList;
   REQUIRE_FALSE(hipDeviceList == nullptr);
   for (int i = 0; i < deviceCount; i++) {
     hipDeviceList[i] = new char[MAX_DEVICE_LENGTH];
     REQUIRE_FALSE(hipDeviceList[i] == nullptr);
   }
-  hipDeviceGetPCIBusIdTests::getPciBusId(deviceCount, hipDeviceList);
+  hipDeviceList = hipDeviceGetPCIBusIdTests::getPciBusId(deviceCount);
 
   for (int i = 0; i < deviceCount; i++) {
     int pciBusID = -1;
     int pciDeviceID = -1;
     int pciDomainID = -1;
     int tempPciBusId = -1;
-    sscanf(hipDeviceList[i], "%04x:%02x:%02x", &pciDomainID, &pciBusID, &pciDeviceID);
+    sscanf(hipDeviceList[i].c_str(), "%04x:%02x:%02x", &pciDomainID, &pciBusID, &pciDeviceID);
     HIP_CHECK(hipDeviceGetAttribute(&tempPciBusId, hipDeviceAttributePciBusId, i));
     REQUIRE_FALSE(pciBusID != tempPciBusId);
   }
-  // Deallocate
-  for (int i = 0; i < deviceCount; i++) {
-    delete[] hipDeviceList[i];
-  }
-  delete[] hipDeviceList;
   printf(
       "pciBusID output of both hipDeviceGetPCIBusId and"
       " hipDeviceGetAttribute matched for all gpus\n");

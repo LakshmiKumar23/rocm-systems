@@ -140,13 +140,17 @@ bool testWithMaskedDevices(int actualNumGPUs) {
 
   return testResult;
 }
+std::vector<std::string> getPciBusId(int deviceCount) {
+  std::vector<std::string> hipDeviceList;
+  hipDeviceList.reserve(deviceCount);
 
-
-bool getPciBusId(int deviceCount, char** hipDeviceList) {
-  for (int i = 0; i < deviceCount; i++) {
-    HIP_CHECK(hipDeviceGetPCIBusId(hipDeviceList[i], MAX_DEVICE_LENGTH, i));
+  for(int i = 0; i < deviceCount; i++) {
+    // initialize all the string with null-characters
+    std::string deviceId(MAX_DEVICE_LENGTH, 0);
+    HIP_CHECK(hipDeviceGetPCIBusId(deviceId.data(), deviceId.size(), i));
+    hipDeviceList.emplace_back(std::move(deviceId));
   }
-  return true;
+  return hipDeviceList;
 }
 }  // namespace hipDeviceGetPCIBusIdTests
 
@@ -219,19 +223,9 @@ TEST_CASE("Unit_hipDeviceGetPCIBusId_CheckPciBusIDWithLspci") {
   int deviceCount = 0;
   HIP_CHECK(hipGetDeviceCount(&deviceCount));
   REQUIRE_FALSE(deviceCount == 0);
-  // Allocate an array of pointer to characters
-  char** hipDeviceList = new char*[deviceCount];
-  REQUIRE_FALSE(hipDeviceList == nullptr);
-  char** pciDeviceList = new char*[deviceCount];
-  REQUIRE_FALSE(pciDeviceList == nullptr);
-  for (int i = 0; i < deviceCount; i++) {
-    hipDeviceList[i] = new char[MAX_DEVICE_LENGTH];
-    REQUIRE_FALSE(hipDeviceList[i] == nullptr);
-    pciDeviceList[i] = new char[MAX_DEVICE_LENGTH];
-    REQUIRE_FALSE(pciDeviceList[i] == nullptr);
-  }
 
-  hipDeviceGetPCIBusIdTests::getPciBusId(deviceCount, hipDeviceList);
+  std::vector<std::string> hipDeviceList = hipDeviceGetPCIBusIdTests::getPciBusId(deviceCount);
+  std::string pciDevice(MAX_DEVICE_LENGTH, 0);
   char const* command = nullptr;
   // Get lspci device list and compare with hip device list
   if ((TestContext::get()).isNvidia()) {
@@ -249,29 +243,20 @@ TEST_CASE("Unit_hipDeviceGetPCIBusId_CheckPciBusIDWithLspci") {
   int index = 0;
   int deviceMatchCount = 0;
   constexpr auto cmpLen = 10;
-  while (fgets(pciDeviceList[index], MAX_DEVICE_LENGTH, fpipe)) {
+  while (fgets(pciDevice.data(), pciDevice.size(), fpipe)) {
     bool bMatchFound = false;
     for (int deviceNo = 0; deviceNo < deviceCount; deviceNo++) {
-      if (!strncasecmp(pciDeviceList[index], hipDeviceList[deviceNo], cmpLen)) {
+      if (!strncasecmp(pciDevice.c_str(), hipDeviceList[deviceNo].c_str(), cmpLen)) {
         deviceMatchCount++;
         bMatchFound = true;
       }
     }
     if (bMatchFound == false) {
-      printf("PCI device: %s is not reported by HIP\n", pciDeviceList[index]);
+      printf("PCI device: %s is not reported by HIP\n", pciDevice.c_str());
     }
     index++;
     if (index >= deviceCount) break;
   }
-  // Deallocate
-  for (int i = 0; i < deviceCount; i++) {
-    delete[] hipDeviceList[i];
-  }
-  delete[] hipDeviceList;
-  for (int i = 0; i < deviceCount; i++) {
-    delete[] pciDeviceList[i];
-  }
-  delete[] pciDeviceList;
   pclose(fpipe);
 
   REQUIRE(deviceMatchCount == deviceCount);
