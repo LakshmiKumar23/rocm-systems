@@ -155,7 +155,7 @@ int
 main(int argc, char** argv)
 {
     // Install signal handler for SIGINT
-    std::signal(SIGINT, signal_handler);
+    std::signal(SIGWINCH, signal_handler);
 
     size_t nthreads{32};
     size_t nstreams{8};
