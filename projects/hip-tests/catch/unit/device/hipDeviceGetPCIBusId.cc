@@ -68,9 +68,8 @@ TEST_CASE("Unit_hipDeviceGetPCIBusId_Check_PciBusID_WithAttr") {
   HIP_CHECK(hipGetDeviceCount(&deviceCount));
   REQUIRE_FALSE(deviceCount == 0);
   printf("No.of gpus in the system: %d\n", deviceCount);
-  // Allocate an array of pointer to characters
   std::vector<std::string> hipDeviceList;
-  REQUIRE_FALSE(hipDeviceList == nullptr);
+
   for (int i = 0; i < deviceCount; i++) {
     hipDeviceList[i] = new char[MAX_DEVICE_LENGTH];
     REQUIRE_FALSE(hipDeviceList[i] == nullptr);
