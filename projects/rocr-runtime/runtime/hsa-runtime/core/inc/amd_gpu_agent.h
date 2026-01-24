@@ -45,11 +45,6 @@
 #ifndef HSA_RUNTIME_CORE_INC_AMD_GPU_AGENT_H_
 #define HSA_RUNTIME_CORE_INC_AMD_GPU_AGENT_H_
 
-#include <atomic>
-#include <condition_variable>
-#include <cstdint>
-#include <deque>
-#include <mutex>
 #include <vector>
 #include <list>
 #include <map>
@@ -67,7 +62,6 @@
 #include "core/util/locks.h"
 #include "core/util/small_heap.h"
 #include "pcs/pcs_runtime.h"
-#include "core/inc/counted_queue_manager.h"
 
 namespace rocr {
 namespace AMD {
@@ -347,16 +341,6 @@ class GpuAgent : public GpuAgentInt {
 
   void AcquireQueueAltScratch(ScratchInfo& scratch) override;
   void ReleaseQueueAltScratch(ScratchInfo& scratch) override;
-
-  // @brief Create a pool of shared queues for multiple user applications within a max limit 
-  hsa_status_t AcquireCountedQueue(hsa_queue_type_t type,
-                                   HSA::hsa_amd_queue_priority_internal_t priority,
-                                   void (*callback)(hsa_status_t, hsa_queue_t*, void*),
-                                   void* data, uint64_t flags,
-                                   hsa_queue_t** out_queue);
-
-  // @brief Release a queue earlier used by application
-  hsa_status_t ReleaseCountedQueue(hsa_queue_t* queue);
 
   // @brief Override from AMD::GpuAgentInt.
   void TranslateTime(core::Signal* signal, hsa_amd_profiling_dispatch_time_t& time) override;
@@ -661,9 +645,6 @@ class GpuAgent : public GpuAgentInt {
   // @brief HSA profile.
   hsa_profile_t profile_;
 
-  // @brief Pool of shared queues owned by this agent
-  rocr::core::CountedQueuePoolManager queue_pool_;
-
   void* trap_code_buf_;
 
   size_t trap_code_buf_size_;
@@ -782,7 +763,7 @@ class GpuAgent : public GpuAgentInt {
   /// @brief Coarse-grain deallocator on this GPU.
   std::function<void(void*)> coarsegrain_deallocator_;
 
-  void* trap_handler_tma_region_;
+  std::unique_ptr<void, std::function<void(void*)>> trap_handler_tma_region_;
 
   /* PC Sampling fields - begin */
   /* 2nd level Trap handler code is based on the offsets within this structure */
@@ -796,88 +777,70 @@ class GpuAgent : public GpuAgentInt {
     uint32_t buf_written_val1;
     uint32_t buf_watermark1;
     hsa_signal_t done_sig1;
-    uint8_t reserved1[16];
+    // Debug counters (offset 0x40)
+    uint32_t debug_trap_entry_count;      // Incremented on every trap entry
+    uint32_t debug_pcs_enabled_count;     // Incremented if PC sampling enabled
+    uint32_t debug_hosttrap_count;        // Incremented if host trap
+    uint32_t debug_stochastic_count;      // Incremented if stochastic
+    uint32_t debug_buffer_write_count;    // Incremented after successful buffer write
+    uint32_t debug_last_xcc_id;           // Last XCC ID that wrote
+    uint32_t debug_last_which_buf;        // Last buffer index used
+    uint32_t reserved1_pad;               // Alignment
     /* pc_sample_t buffer0[buf_size]; */
     /* pc_sample_t buffer1[buf_size]; */
   } pcs_sampling_data_t;
 
+  /* TMA2 structure - trap handler entry point */
   typedef struct {
-    // Host ring is written by multiple XCC producer threads and drained by a
-    // single consumer thread.
-    struct alignas(8) host_ring_record_t {
-      uint32_t committed_bytes;
-      uint32_t payload_bytes;
-    };
+    pcs_sampling_data_t* host_trap_buffers;        // [0x00] Base of host trap buffer array
+    pcs_sampling_data_t* stochastic_trap_buffers;  // [0x08] Base of stochastic trap buffer array
+    uint32_t per_xcc_size;                         // [0x10] Per-XCC stride (gfx9.4+ only)
+    uint32_t reserved_pad;                         // [0x14] Alignment padding
+  } pcs_tma2_t;
 
-    enum : uint32_t { HOST_RING_WRAP_MARKER = 0xFFFFFFFFu };
+  typedef struct {
+    /* Per-XCC architecture for reduced atomic contention */
+    uint32_t num_xcc;                       // Number of XCCs on this device
+    pcs_sampling_data_t** device_data;      // Array of pointers (size = num_xcc)
+    pcs_sampling_data_t* device_data_base;  // Base of contiguous allocation
 
-    struct pcs_xcc_data_t {
-      /* Sampling data - stored on device for trap handler access */
-      pcs_sampling_data_t* device_data;
+    /* Multi-producer shared host buffer with lockless CAS */
+    uint8_t* host_buffer;
+    size_t host_buffer_size;
+    uint8_t* host_buffer_wrap_pos;
+    std::atomic<uint64_t> host_write_offset;  // CAS-based write offset
+    std::atomic<uint64_t> host_read_offset;   // CAS-based read offset
+    size_t lost_sample_count;
+    std::mutex host_buffer_mutex;
 
-      uint32_t which_buffer;
-
-      // Per-XCC scratch used for PM4 sequences.
-      uint64_t* old_val;
-      uint32_t* cmd_data;
-      size_t cmd_data_sz;
-
-      // Signal passed into ExecutePM4() so we do not need to allocate a new
-      // signal on each call.
-      hsa_signal_t exec_pm4_signal;
-
-      // Serializes PM4 sequences for this XCC between producer thread and
-      // explicit flush calls.
-      std::mutex pm4_mutex;
-    };
-
-    // Per-XCC device buffers and associated PM4 scratch.
-    std::deque<pcs_xcc_data_t> xcc;
-
-    // Device-visible pointer array (length == properties_.NumXcc) that the
-    // trap handler indexes by HW_REG_XCC_ID.
-    pcs_sampling_data_t** device_data_ptr_array;
-
-    // Host ring buffer used to aggregate samples from all XCCs.
-    uint8_t* host_ring;
-    size_t host_ring_size;
-    std::atomic<uint64_t> host_ring_write;
-    std::atomic<uint64_t> host_ring_read;
-    std::condition_variable host_ring_cv;
-    std::mutex host_ring_cv_mutex;
-
-    // Serializes consumption between the background consumer thread and an
-    // explicit PcSamplingFlush() call.
-    std::mutex host_ring_consume_mutex;
-
-    // Consumer staging buffer so callbacks continue to receive up to
-    // session.buffer_size() contiguous bytes.
-    std::vector<uint8_t> consumer_staging;
-    size_t consumer_staging_fill;
-
-    std::atomic<size_t> lost_sample_count;
-    std::atomic<bool> stop_requested;
-
-    // Producer threads: one per XCC. Consumer thread: one per method.
-    std::vector<os::Thread> producer_threads;
-    os::Thread consumer_thread;
+    /* Per-XCC thread resources (arrays of size num_xcc) */
+    os::Thread* threads;             // Array of threads
+    uint32_t* which_buffer;          // Per-XCC buffer selector
+    uint64_t** old_val;              // Per-XCC atomic scratch
+    uint32_t** cmd_data;             // Per-XCC PM4 command buffers
+    size_t cmd_data_sz;              // Size per cmd_data buffer
+    hsa_signal_t* exec_pm4_signals;  // Per-XCC PM4 execution signals
+    hsa_signal_t* done_signals;      // Cached signal handles (size = num_xcc * 2)
+    std::mutex pm4_queue_mutex;      // Serialize PM4 queue access across XCCs
 
     pcs::PcsRuntime::PcSamplingSession* session;
   } pcs_data_t;
   /* PC Sampling fields - end */
 
-  hsa_status_t UpdateTrapHandlerWithPCS(pcs_sampling_data_t** pcs_hosttrap_buffers_per_xcc,
-                                        pcs_sampling_data_t** pcs_stochastic_buffers_per_xcc);
+  hsa_status_t UpdateTrapHandlerWithPCS(pcs_sampling_data_t* pcs_hosttrap_buffers,
+                                        pcs_sampling_data_t* pcs_stochastic_buffers,
+                                        uint32_t per_xcc_size);
 
-  void PcSamplingProducerThread(pcs_data_t& pcs_data, uint32_t xcc_id, const char* thread_name);
-  void PcSamplingConsumerThread(pcs_data_t& pcs_data, const char* thread_name);
+  // @brief Thread function to process PC sampling data collected via host-trap
+  // or Stochastic sampling.
+  void PcSamplingThread(pcs_data_t& pcs_data, const char* thread_name);
 
-  bool PcSamplingHostRingReserve(pcs_data_t& pcs_data, uint32_t payload_bytes,
-                                pcs_data_t::host_ring_record_t*& record,
-                                uint8_t*& payload);
-  void PcSamplingHostRingCommit(pcs_data_t& pcs_data, pcs_data_t::host_ring_record_t* record);
-  hsa_status_t PcSamplingFlushDeviceBuffersXcc(pcs::PcsRuntime::PcSamplingSession& session,
-                                              pcs_data_t& pcs_data, uint32_t xcc_id);
+  // @brief Per-XCC thread function for PC sampling (monitors one XCC's device buffers)
+  void PcSamplingThreadPerXCC(pcs_data_t& pcs_data, uint32_t xcc_id, const char* thread_name);
+
+  // @brief Flush device buffers for per-XCC PC sampling architecture
+  hsa_status_t PcSamplingFlushDeviceBuffersPerXCC(pcs::PcsRuntime::PcSamplingSession& session,
+                                                  uint32_t xcc_id);
 
   // @brief device handle
   amdgpu_device_handle ldrm_dev_;
