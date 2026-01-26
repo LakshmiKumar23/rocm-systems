@@ -156,10 +156,10 @@ void testArrayAsTexture(hipArray_t array, const size_t width, const size_t heigh
   std::vector<scalar_type> hostData(width * h * vec_info::size);
   // assigned ascending values to the data array to show indexing is working
   // Avoid signed char overflow (UB) by generating in a wider type first.
-  std::vector<int> hostDataSeed(hostData.size());
-  std::iota(std::begin(hostDataSeed), std::end(hostDataSeed), 0);
-  std::transform(hostDataSeed.begin(), hostDataSeed.end(), hostData.begin(),
-                 [](int value) { return static_cast<scalar_type>(value); });
+  int value = 0;
+  for (auto &elem : hostData) {
+    elem = static_cast<scalar_type>(value++);
+  }
 
   copyToArray(array, hostData, height);
 

@@ -220,6 +220,7 @@ float* funcToChkArray(hipArray_t array) {
     }
   } else {
     INFO("Unsupported format: " << desc.Format);
+    REQUIRE(false);
     return nullptr;
   }
   HIP_CHECK(hipMemcpyAtoH(A_h, array, 0, mem_size));
