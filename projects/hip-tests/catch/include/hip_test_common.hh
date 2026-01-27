@@ -120,7 +120,9 @@ THE SOFTWARE.
     }                                                                                              \
     auto localError = error;                                                                       \
     HCResult result(__LINE__, __FILE__, localError, #error);                                       \
-    TestContext::get().addResults(result);                                                         \
+    if (TestContext::get().addResults(result)) {                                                   \
+      return;                                                                                      \
+    }                                                                                              \
   }
 
 #define REQUIRE_THREAD(condition)                                                                  \
@@ -131,7 +133,9 @@ THE SOFTWARE.
     }                                                                                              \
     auto localResult = (condition);                                                                \
     HCResult result(__LINE__, __FILE__, hipSuccess, #condition, localResult);                      \
-    TestContext::get().addResults(result);                                                         \
+    if (TestContext::get().addResults(result)) {                                                   \
+      return;                                                                                      \
+    }                                                                                              \
   }
 
 // Do not call before all threads have joined

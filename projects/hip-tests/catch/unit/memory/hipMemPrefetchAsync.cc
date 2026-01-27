@@ -84,6 +84,7 @@ TEST_CASE("Unit_hipMemPrefetchAsync_Sync_Behavior") {
   const auto device = supported_devices.front();
   const auto stream_type = GENERATE(Streams::nullstream, Streams::perThread, Streams::created);
 
+  HIP_CHECK(hipSetDevice(device));
   StreamGuard sg(stream_type);
   LinearAllocGuard<void> alloc(LinearAllocs::hipMallocManaged, kPageSize);
   LaunchDelayKernel(std::chrono::milliseconds{100}, sg.stream());
@@ -98,6 +99,7 @@ TEST_CASE("Unit_hipMemPrefetchAsync_Rounding_Behavior") {
     HipTest::HIP_SKIP_TEST("Test need at least one device with managed memory support");
   }
   const auto device = supported_devices.front();
+  HIP_CHECK(hipSetDevice(device));
   LinearAllocGuard<uint8_t> alloc(LinearAllocs::hipMallocManaged, 3 * kPageSize);
   REQUIRE_FALSE(reinterpret_cast<intptr_t>(alloc.ptr()) % kPageSize);
   const auto [offset, width] =

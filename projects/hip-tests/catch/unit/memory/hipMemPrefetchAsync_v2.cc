@@ -77,15 +77,10 @@ TEST_CASE("Unit_hipMemPrefetchAsync_v2_Device_Host", "[multigpu]") {
         "Test need at least one device with managed memory support");
   }
 
-  HIP_CHECK(hipSetDevice(supportedDevices[0]));
-
   constexpr int N = 1024;
   constexpr int Nbytes = N * sizeof(int);
   constexpr int value = 10;
   int *memPtr = nullptr;
-
-  hipStream_t stream;
-  HIP_CHECK(hipStreamCreate(&stream));
 
   HIP_CHECK(hipMallocManaged(reinterpret_cast<void **>(&memPtr), Nbytes,
                              hipMemAttachGlobal));
@@ -97,6 +92,8 @@ TEST_CASE("Unit_hipMemPrefetchAsync_v2_Device_Host", "[multigpu]") {
 
     for (int deviceId : supportedDevices) {
       HIP_CHECK(hipSetDevice(deviceId));
+      hipStream_t stream;
+      HIP_CHECK(hipStreamCreate(&stream));
 
       hipMemLocation location;
       location.type = hipMemLocationTypeDevice;
@@ -109,7 +106,8 @@ TEST_CASE("Unit_hipMemPrefetchAsync_v2_Device_Host", "[multigpu]") {
       HIP_CHECK(hipMalloc(&devArr, Nbytes));
       REQUIRE(devArr != nullptr);
 
-      copyDataKernel<<<1, N>>>(devArr, memPtr);
+      copyDataKernel<<<1, N, 0, stream>>>(devArr, memPtr);
+      HIP_CHECK(hipGetLastError());
 
       int hostArr[N];
       HIP_CHECK(hipMemcpy(hostArr, devArr, Nbytes, hipMemcpyDeviceToHost));
@@ -123,7 +121,8 @@ TEST_CASE("Unit_hipMemPrefetchAsync_v2_Device_Host", "[multigpu]") {
       }
 
       currentValue = currentValue + 1;
-      fillDataKernel<<<1, N>>>(memPtr, currentValue);
+      fillDataKernel<<<1, N, 0, stream>>>(memPtr, currentValue);
+      HIP_CHECK(hipGetLastError());
       HIP_CHECK(hipDeviceSynchronize());
 
       for (int i = 0; i < N; i++) {
@@ -132,12 +131,18 @@ TEST_CASE("Unit_hipMemPrefetchAsync_v2_Device_Host", "[multigpu]") {
         REQUIRE(memPtr[i] == currentValue);
       }
 
+      HIP_CHECK(hipStreamDestroy(stream));
       HIP_CHECK(hipFree(devArr));
     }
   }
 
   SECTION("With Host") {
-    fillDataKernel<<<1, N>>>(memPtr, value);
+    HIP_CHECK(hipSetDevice(supportedDevices[0]));
+    hipStream_t stream;
+    HIP_CHECK(hipStreamCreate(&stream));
+
+    fillDataKernel<<<1, N, 0, stream>>>(memPtr, value);
+    HIP_CHECK(hipGetLastError());
     HIP_CHECK(hipDeviceSynchronize());
 
     hipMemLocation location;
@@ -160,9 +165,10 @@ TEST_CASE("Unit_hipMemPrefetchAsync_v2_Device_Host", "[multigpu]") {
                        << " Got value = " << memPtr[i]);
       REQUIRE(memPtr[i] == newValue);
     }
+
+    HIP_CHECK(hipStreamDestroy(stream));
   }
 
-  HIP_CHECK(hipStreamDestroy(stream));
   HIP_CHECK(hipFree(memPtr));
   // Reset to default device
   HIP_CHECK(hipSetDevice(0));
@@ -205,7 +211,8 @@ TEST_CASE("Unit_hipMemPrefetchAsync_v2_HostNuma_HostNumaCurrent") {
   HIP_CHECK(hipMallocManaged(reinterpret_cast<void **>(&memPtr), Nbytes,
                              hipMemAttachGlobal));
   REQUIRE(memPtr != nullptr);
-  fillDataKernel<<<1, N>>>(memPtr, value);
+  fillDataKernel<<<1, N, 0, stream>>>(memPtr, value);
+  HIP_CHECK(hipGetLastError());
   HIP_CHECK(hipDeviceSynchronize());
 
   SECTION("With Host NUMA") {
