@@ -628,7 +628,7 @@ class VirtualGPU : public device::VirtualDevice {
   ) {
     amd::Memory* mem = new (amdImage.getContext()) amd::Buffer(amdImage, 0, 0, amdImage.getSize());
     mem->setVirtualDevice(this);
-    if (!mem->create()) {
+    if ((mem != nullptr) && !mem->create()) {
       mem->release();
     }
     return mem;
