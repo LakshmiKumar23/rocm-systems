@@ -43,6 +43,7 @@ THE SOFTWARE.
 #define CUDA_12000 12000
 #define CUDA_12020 12020
 #define CUDA_12030 12030
+#define CUDA_13000 13000
 
 #ifdef __cplusplus
 extern "C" {
@@ -1942,6 +1943,7 @@ typedef enum cudaMemLocationType hipMemLocationType;
 #define hipMemLocationTypeDevice cudaMemLocationTypeDevice
 #define hipMemLocationTypeHost cudaMemLocationTypeHost
 #define hipMemLocationTypeHostNuma cudaMemLocationTypeHostNuma
+#define hipMemLocationTypeHostNumaCurrent cudaMemLocationTypeHostNumaCurrent
 #define hipMemHandleTypeNone cudaMemHandleTypeNone
 #define hipMemHandleTypePosixFileDescriptor cudaMemHandleTypePosixFileDescriptor
 #define hipMemHandleTypeWin32 cudaMemHandleTypeWin32
@@ -2096,6 +2098,16 @@ inline static hipError_t hipMemPrefetchAsync_v2(const void* dev_ptr, size_t coun
   return hipCUDAErrorTohipError(cudaMemPrefetchAsync_v2(dev_ptr, count, location, flags, stream));
 #endif
 }
+
+#if CUDA_VERSION >= CUDA_13000
+inline static hipError_t hipMemPrefetchBatchAsync(void** dev_ptrs, size_t* sizes, size_t count,
+                                                  hipMemLocation* locations,
+                                                  size_t* location_indices, size_t num_locations,
+                                                  unsigned long long flags, hipStream_t stream) {
+  return hipCUDAErrorTohipError(cudaMemPrefetchBatchAsync(
+      dev_ptrs, sizes, count, locations, location_indices, num_locations, flags, stream));
+}
+#endif
 
 inline static hipError_t hipMemAdvise_v2(const void* dev_ptr, size_t count, hipMemoryAdvise advice,
                                          hipMemLocation location) {
@@ -4691,7 +4703,7 @@ inline static hipError_t hipGraphRemoveDependencies(hipGraph_t graph, const hipG
                                                     const hipGraphNode_t* to,
                                                     size_t numDependencies) {
 #if CUDA_VERSION >= 13000
-// CUDA 13+ signature update:edgeData is optional array of edge data. 
+// CUDA 13+ signature update:edgeData is optional array of edge data.
 // If NULL, edge data is assumed to be default (zeroed).
   return hipCUDAErrorTohipError(cudaGraphRemoveDependencies(graph, from, to, NULL, numDependencies));
 #else
