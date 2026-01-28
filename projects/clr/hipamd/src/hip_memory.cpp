@@ -698,7 +698,7 @@ hipError_t ihipMemcpy(void* dst, const void* src, size_t sizeBytes, hipMemcpyKin
 
   amd::Command* command = nullptr;
   if (srcDeviceMemory == nullptr && dstDeviceMemory == nullptr) {
-    if (kind != hipHostToHost) {
+    if (kind != hipMemcpyHostToHost || kind != hipMemcpyDefault) {
       return hipErrorInvalidValue;
     }
     ihipHtoHMemcpy(dst, src, sizeBytes, stream);
