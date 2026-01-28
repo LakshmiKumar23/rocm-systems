@@ -200,6 +200,7 @@ struct AmdExtTable {
 	decltype(hsa_amd_coherency_set_type)* hsa_amd_coherency_set_type_fn;
   decltype(hsa_amd_profiling_set_profiler_enabled)* hsa_amd_profiling_set_profiler_enabled_fn;
   decltype(hsa_amd_profiling_async_copy_enable) *hsa_amd_profiling_async_copy_enable_fn;
+  decltype(hsa_amd_agent_preload) *hsa_amd_agent_preload_fn;
   decltype(hsa_amd_profiling_get_dispatch_time)* hsa_amd_profiling_get_dispatch_time_fn;
   decltype(hsa_amd_profiling_get_async_copy_time) *hsa_amd_profiling_get_async_copy_time_fn;
   decltype(hsa_amd_profiling_convert_tick_to_system_domain)* hsa_amd_profiling_convert_tick_to_system_domain_fn;
