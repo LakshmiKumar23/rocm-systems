@@ -198,7 +198,11 @@ endif()
 if(__HIP_ENABLE_PCH)
   find_program(CLANG_EXEC
     NAMES clang
-    PATHS ${ROCM_PATH}/lib/llvm/bin)
+    PATHS ${ROCM_PATH}/lib/llvm/bin
+    NO_DEFAULT_PATH)
+  if(NOT CLANG_EXEC)
+    message(FATAL_ERROR "Clang not found in: ${ROCM_PATH}/lib/llvm/bin")
+  endif()
   get_filename_component(CLANG_BIN_DIR ${CLANG_EXEC} DIRECTORY)
   if(NOT DEFINED HIP_LLVM_ROOT)
     set(HIP_LLVM_ROOT "${CLANG_BIN_DIR}/..")
