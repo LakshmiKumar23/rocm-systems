@@ -696,7 +696,7 @@ class SvmBuffer : AllStatic {
   static bool Contains(uintptr_t ptr);
 
   static std::map<uintptr_t, uintptr_t> Allocated_;  // !< Allocated buffers
-  static Monitor AllocatedLock_;
+  static RecursiveMonitor AllocatedLock_;
 };
 
 class ArenaMemory : public Buffer {
