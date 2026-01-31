@@ -150,13 +150,8 @@ class Event {
     command.retain();
   }
 
-<<<<<<< HEAD
-  amd::Monitor& lock() { return lock_; }
-  int deviceId() const { return device_id_; }
-=======
   amd::RecursiveMonitor& lock() { return lock_; }
   const int deviceId() const { return device_id_; }
->>>>>>> 7cdb916d36 (Remove std::variant on monitor)
   void setDeviceId(int id) { device_id_ = id; }
   amd::Event* event() { return event_; }
 
@@ -183,17 +178,10 @@ class Event {
   virtual int64_t time(bool getStartTs) const;
 
  protected:
-<<<<<<< HEAD
-  uint32_t flags_;         //!< Flags associated with the event
-  amd::Monitor lock_;      //!< Mutex for thread-safe access to event state
-  amd::Event* event_;      //!< Underlying ROCclr event object for GPU synchronization
-  int device_id_;          //!< Device ID where this event was created
-=======
-  amd::RecursiveMonitor lock_;
-  hip::Stream* stream_;
-  amd::Event* event_;
-  int device_id_;
->>>>>>> 7cdb916d36 (Remove std::variant on monitor)
+  uint32_t flags_;             //!< Flags associated with the event
+  amd::RecursiveMonitor lock_; //!< Mutex for thread-safe access to event state
+  amd::Event* event_;          //!< Underlying ROCclr event object for GPU synchronization
+  int device_id_;              //!< Device ID where this event was created
 };
 
 class EventDD : public Event {
