@@ -779,16 +779,20 @@ set(SRC_FILES
   src/misc/latency_profiler/CollTraceUtils.cc
 )
 
-if(USE_AMDSMI)
-  set(SMI_SOURCES
-    src/include/amdsmi_wrap.h
-    src/misc/amdsmi_wrap.cc
-  )
-elseif(ENABLE_AMDSMI)
-  set(SMI_SOURCES
-    src/include/rocm_smi_wrap.h
-    src/misc/rocm_smi_wrap.cc
-  )
+# Unconditionally include SMI headers so they are hipified/available
+set(SMI_HEADERS
+  src/include/rocm_smi_wrap.h
+  src/include/amdsmi_wrap.h
+)
+list(APPEND SRC_FILES ${SMI_HEADERS})
+
+if(ENABLE_AMDSMI)
+  # Only compile the wrapper sources if SMI is enabled
+  if(USE_AMDSMI)
+     list(APPEND SRC_FILES src/misc/amdsmi_wrap.cc)
+  else()
+     list(APPEND SRC_FILES src/misc/rocm_smi_wrap.cc)
+  endif()
 endif()
 list(APPEND SRC_FILES ${SMI_SOURCES})
 
