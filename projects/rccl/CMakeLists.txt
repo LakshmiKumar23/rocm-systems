@@ -289,6 +289,8 @@ if(ROCM_VERSION VERSION_GREATER_EQUAL "71100" AND ENABLE_AMDSMI)
     set(SMI_LIBRARIES amd_smi)
     set(USE_AMDSMI ON CACHE INTERNAL "Use amd-smi instead of rocm-smi")
   endif()
+endif()
+
 if(NOT USE_AMDSMI AND ENABLE_AMDSMI)
   ## Fallback to rocm-smi if amd-smi not found or ROCm < 7.11.0
   message(WARNING "Could not find amd_smi. Falling back to rocm_smi.")
