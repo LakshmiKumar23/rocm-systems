@@ -46,12 +46,7 @@ option(QUIET_WARNINGS                          "Supress compiler warnings"      
 option(ENABLE_ROCSHMEM                         "Enable rocSHMEM support in RCCL"               OFF)
 option(ENABLE_AMDSMI                           "Enable AMD/ROCm SMI support"                   ON)
 
-if(ENABLE_AMDSMI)
-  message(STATUS "SMI Support: ENABLED")
-  add_compile_definitions(RCCL_SMI_ENABLED)
-else()
-  message(STATUS "SMI Support: DISABLED via ENABLE_AMDSMI=OFF")
-endif()
+
 
 # Default GPU architectures to build
 #==================================================================================================
@@ -126,7 +121,21 @@ else()
 endif()
 
 set(GPU_TARGETS "${SUPPORTED_GPUS}")
+set(GPU_TARGETS "${SUPPORTED_GPUS}")
 message(STATUS "Compiling for ${GPU_TARGETS}")
+
+# Auto-disable SMI for gfx1151 as it is not supported
+if("${GPU_TARGETS}" MATCHES "gfx1151")
+  message(STATUS "Detected gfx1151 target: Forcing ENABLE_AMDSMI=OFF")
+  set(ENABLE_AMDSMI OFF CACHE BOOL "Force disable SMI for gfx1151" FORCE)
+endif()
+
+if(ENABLE_AMDSMI)
+  message(STATUS "SMI Support: ENABLED")
+  add_compile_definitions(RCCL_SMI_ENABLED)
+else()
+  message(STATUS "SMI Support: DISABLED")
+endif()
 
 ## NOTE: Reload rocm-cmake in order to update GPU_TARGETS
 include(cmake/Dependencies.cmake) # Reloading to use desired GPU_TARGETS instead of defaults
