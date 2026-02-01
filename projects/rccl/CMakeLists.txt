@@ -793,6 +793,12 @@ if(ENABLE_AMDSMI)
   else()
      list(APPEND SRC_FILES src/misc/rocm_smi_wrap.cc)
   endif()
+else()
+  # When SMI is disabled, compile the shim to provide dummy symbols (rsmi_init)
+  # This satisfies external dependencies (like PyTorch) that expect SMI symbols
+  # to be present, preventing them from failing to load or trying to load
+  # the broken system library.
+  list(APPEND SRC_FILES src/misc/smi_shim.cc)
 endif()
 list(APPEND SRC_FILES ${SMI_SOURCES})
 
