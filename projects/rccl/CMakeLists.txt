@@ -281,6 +281,9 @@ if(ROCM_VERSION VERSION_GREATER_EQUAL "71100" AND ENABLE_AMDSMI)
     set(SMI_LIBRARIES amd_smi)
     set(USE_AMDSMI ON CACHE INTERNAL "Use amd-smi instead of rocm-smi")
   endif()
+else()
+  # Force unset if disabled
+  unset(USE_AMDSMI CACHE)
 endif()
 
 if(NOT USE_AMDSMI AND ENABLE_AMDSMI)
