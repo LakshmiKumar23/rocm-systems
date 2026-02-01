@@ -803,7 +803,7 @@ if(USE_AMDSMI)
     src/include/amdsmi_wrap.h
     src/misc/amdsmi_wrap.cc
   )
-else()
+elseif(ENABLE_AMDSMI)
   set(SMI_SOURCES
     src/include/rocm_smi_wrap.h
     src/misc/rocm_smi_wrap.cc
