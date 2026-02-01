@@ -44,6 +44,7 @@ option(TRACE                                   "Enable additional tracing"      
 option(FAULT_INJECTION                         "Enable fault injection"                        ON)
 option(QUIET_WARNINGS                          "Supress compiler warnings"                     OFF)
 option(ENABLE_ROCSHMEM                         "Enable rocSHMEM support in RCCL"               OFF)
+option(ENABLE_AMDSMI                           "Enable AMD/ROCm SMI support"                   ON)
 
 # Default GPU architectures to build
 #==================================================================================================
@@ -301,6 +302,7 @@ if(NOT USE_AMDSMI AND ENABLE_AMDSMI)
   message(STATUS "Found rocm_smi at ${SMI_INCLUDE_DIR}")
   set(SMI_LIB_NAME "rocm-smi-lib" CACHE INTERNAL "rocm-smi-lib for packaging")
   set(SMI_LIBRARIES rocm_smi64)
+  add_definitions("-DUSE_ROCMSMI")
 
   check_include_file_cxx("${SMI_INCLUDE_DIR}/rocm_smi/rocm_smi64Config.h" HAVE_ROCM_SMI64CONFIG)
 

@@ -742,7 +742,7 @@ int getFirmwareVersion() {
 
   fw_version = info.fw_info_list[0].fw_version;
 
-#else
+#elif defined(USE_ROCMSMI)
   rsmi_status_t ret;
   ret = rsmi_init(0);
   if (ret != RSMI_STATUS_SUCCESS) {
@@ -755,6 +755,9 @@ int getFirmwareVersion() {
     ERROR("Could not query firmware info using rocm-smi");
     return -1;
   }
+#else
+  // SMI disabled
+  fw_version = -1;
 #endif
 
   return fw_version;
