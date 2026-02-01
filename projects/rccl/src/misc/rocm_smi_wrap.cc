@@ -1,3 +1,4 @@
+#if defined(USE_ROCMSMI)
 /*
 Copyright (c) 2021-2024 Advanced Micro Devices, Inc. All rights reserved.
 
@@ -201,3 +202,4 @@ ncclResult_t rocm_smi_getLinkInfo(int srcIndex, int dstIndex, RSMI_IO_LINK_TYPE*
 
   return ncclSuccess;
 }
+#endif
