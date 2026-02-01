@@ -284,6 +284,7 @@ if(ROCM_VERSION VERSION_GREATER_EQUAL "71100" AND ENABLE_AMDSMI)
 else()
   # Force unset if disabled
   unset(USE_AMDSMI CACHE)
+  add_definitions("-DSMI_DISABLED")
 endif()
 
 if(NOT USE_AMDSMI AND ENABLE_AMDSMI)
