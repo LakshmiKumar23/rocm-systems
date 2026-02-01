@@ -46,12 +46,11 @@ option(QUIET_WARNINGS                          "Supress compiler warnings"      
 option(ENABLE_ROCSHMEM                         "Enable rocSHMEM support in RCCL"               OFF)
 option(ENABLE_AMDSMI                           "Enable AMD/ROCm SMI support"                   ON)
 
-if(NOT ENABLE_AMDSMI)
-  message(STATUS "SMI Support: DISABLED via ENABLE_AMDSMI=OFF")
-  add_compile_definitions(SMI_DISABLED)
-  unset(USE_AMDSMI CACHE)
-else()
+if(ENABLE_AMDSMI)
   message(STATUS "SMI Support: ENABLED")
+  add_compile_definitions(RCCL_SMI_ENABLED)
+else()
+  message(STATUS "SMI Support: DISABLED via ENABLE_AMDSMI=OFF")
 endif()
 
 # Default GPU architectures to build
@@ -291,39 +290,7 @@ if(ROCM_VERSION VERSION_GREATER_EQUAL "71100" AND ENABLE_AMDSMI)
   endif()
 endif()
 
-if(NOT USE_AMDSMI AND ENABLE_AMDSMI)
-  ## Fallback to rocm-smi if amd-smi not found or ROCm < 7.11.0
-  message(WARNING "Could not find amd_smi. Falling back to rocm_smi.")
-  find_package(rocm_smi PATHS ${ROCM_PATH}/lib/cmake/rocm_smi)
-  if(rocm_smi_FOUND)
-    set(SMI_INCLUDE_DIR "${rocm_smi_INCLUDE_DIR}" CACHE INTERNAL "rocm-smi include directory")
-    set(SMI_LIB_DIR "${rocm_smi_LIB_DIR}" CACHE INTERNAL "rocm-smi library directory")
-  else()
-    message(WARNING "CMake could not find rocm-smi. Checking old include directory structure for rocm_smi")
-    set(SMI_INCLUDE_DIR "${ROCM_PATH}/rocm_smi/include")
-    set(SMI_LIB_DIR     "${ROCM_PATH}/rocm_smi/lib")
-  endif()
 
-  if(NOT EXISTS "${SMI_INCLUDE_DIR}" OR NOT EXISTS "${SMI_LIB_DIR}")
-    message(FATAL_ERROR "rocm_smi not found in ${SMI_INCLUDE_DIR}")
-  endif()
-  message(STATUS "Found rocm_smi at ${SMI_INCLUDE_DIR}")
-  set(SMI_LIB_NAME "rocm-smi-lib" CACHE INTERNAL "rocm-smi-lib for packaging")
-  set(SMI_LIBRARIES rocm_smi64)
-  add_definitions("-DUSE_ROCMSMI")
-
-  check_include_file_cxx("${SMI_INCLUDE_DIR}/rocm_smi/rocm_smi64Config.h" HAVE_ROCM_SMI64CONFIG)
-
-  ### Check for RSMI_INIT_FLAG_THRAD_ONLY_MUTEX support
-  file(READ "${SMI_INCLUDE_DIR}/rocm_smi/rocm_smi.h" rocm_smi_incl)
-  string(FIND "${rocm_smi_incl}" "RSMI_INIT_FLAG_THRAD_ONLY_MUTEX" matchres)
-  if(${matchres} EQUAL -1)
-    message(STATUS "RSMI_INIT_FLAG_THRAD_ONLY_MUTEX not supported")
-  else()
-    message(STATUS "RSMI_INIT_FLAG_THRAD_ONLY_MUTEX supported")
-    set(HAVE_ROCM_SMI_THREAD_ONLY_MUTEX True)
-  endif ()
-endif()
 
 ## Check for BFD library if custom backtrace is requested
 if(BUILD_BFD)

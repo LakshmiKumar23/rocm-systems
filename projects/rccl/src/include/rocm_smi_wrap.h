@@ -29,7 +29,7 @@ THE SOFTWARE.
 #endif
 #include "nccl.h"
 
-#if defined(USE_ROCMSMI) && !defined(SMI_DISABLED)
+#if defined(USE_ROCMSMI) && defined(RCCL_SMI_ENABLED)
 ncclResult_t rocm_smi_init();
 ncclResult_t rocm_smi_getNumDevice(uint32_t* num_devs);
 ncclResult_t rocm_smi_getDevicePciBusIdString(uint32_t deviceIndex, char* pciBusId, size_t len);

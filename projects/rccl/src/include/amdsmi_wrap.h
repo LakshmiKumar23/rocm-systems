@@ -7,7 +7,7 @@
 #include "amd_smi/amdsmi.h"
 #include "nccl.h"
 
-#if defined(USE_AMDSMI) && !defined(SMI_DISABLED)
+#if defined(USE_AMDSMI) && defined(RCCL_SMI_ENABLED)
 ncclResult_t amd_smi_init();
 ncclResult_t amd_smi_shutdown();
 ncclResult_t amd_smi_getNumDevice(uint32_t* num_devs);
