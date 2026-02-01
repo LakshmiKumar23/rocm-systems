@@ -46,6 +46,14 @@ option(QUIET_WARNINGS                          "Supress compiler warnings"      
 option(ENABLE_ROCSHMEM                         "Enable rocSHMEM support in RCCL"               OFF)
 option(ENABLE_AMDSMI                           "Enable AMD/ROCm SMI support"                   ON)
 
+if(NOT ENABLE_AMDSMI)
+  message(STATUS "SMI Support: DISABLED via ENABLE_AMDSMI=OFF")
+  add_definitions("-DSMI_DISABLED")
+  unset(USE_AMDSMI CACHE)
+else()
+  message(STATUS "SMI Support: ENABLED")
+endif()
+
 # Default GPU architectures to build
 #==================================================================================================
 set(DEFAULT_GPUS
@@ -281,12 +289,6 @@ if(ROCM_VERSION VERSION_GREATER_EQUAL "71100" AND ENABLE_AMDSMI)
     set(SMI_LIBRARIES amd_smi)
     set(USE_AMDSMI ON CACHE INTERNAL "Use amd-smi instead of rocm-smi")
   endif()
-else()
-  # Force unset if disabled
-  unset(USE_AMDSMI CACHE)
-  add_definitions("-DSMI_DISABLED")
-endif()
-
 if(NOT USE_AMDSMI AND ENABLE_AMDSMI)
   ## Fallback to rocm-smi if amd-smi not found or ROCm < 7.11.0
   message(WARNING "Could not find amd_smi. Falling back to rocm_smi.")
@@ -1196,6 +1198,9 @@ if (BUILD_BFD)
   if (HAVE_TWO_ARG_BFD_SECTION_SIZE)
     target_compile_definitions(rccl PRIVATE HAVE_TWO_ARG_BFD_SECTION_SIZE)
   endif()
+endif()
+if (NOT ENABLE_AMDSMI)
+  target_compile_definitions(rccl PRIVATE SMI_DISABLED)
 endif()
 if (IFC_ENABLED)
   target_compile_definitions(rccl PRIVATE USE_INDIRECT_FUNCTION_CALL)
