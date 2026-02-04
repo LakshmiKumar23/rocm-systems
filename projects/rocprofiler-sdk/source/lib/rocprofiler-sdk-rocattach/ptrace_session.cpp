@@ -131,7 +131,7 @@ PTraceSession::ptrace_call(__ptrace_request   op,
         {
             return ROCATTACH_STATUS_ERROR;
         }
-        auto data_as_ptr = reinterpret_cast<uint64_t*>(std::get<void*>(data));
+        auto* data_as_ptr = reinterpret_cast<uint64_t*>(std::get<void*>(data));
         if(!data_as_ptr)
         {
             return ROCATTACH_STATUS_ERROR;
