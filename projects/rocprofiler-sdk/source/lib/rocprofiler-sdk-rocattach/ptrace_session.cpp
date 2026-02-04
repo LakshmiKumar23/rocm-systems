@@ -102,9 +102,9 @@ PTraceSession::is_supported()
 }
 
 // Performs a ptrace operation using the given parameters with this PTraceSession's pid and
-// PTraceRunner. All ptrace operations work the same EXCEPT PTRACE_PEEKDATA which has been changed to
-// provide the 64-bit read data at the address given in data, instead of by return value.
-// Returns a non-success status on operation timeout or nonzero errno from ptrace.
+// PTraceRunner. All ptrace operations work the same EXCEPT PTRACE_PEEKDATA which has been changed
+// to provide the 64-bit read data at the address given in data, instead of by return value. Returns
+// a non-success status on operation timeout or nonzero errno from ptrace.
 rocattach_status_t
 PTraceSession::ptrace_call(__ptrace_request   op,
                            ptrace_parameter_t addr,
