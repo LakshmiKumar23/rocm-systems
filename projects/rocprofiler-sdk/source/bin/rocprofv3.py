@@ -464,16 +464,16 @@ For attachment profiling of running processes:
 
     spm_options.add_argument(
         "--spm-timeout",
-        help="Timeout for SPM, in ms. Larger values may slow down the application, while smaller values may drop data. Default value is set to 50 ms in tool",
+        help="Timeout for SPM, in ms. Larger values may slow down the application, while smaller values may drop data. Default value is set to 0 ms in tool",
         default=None,
         type=int,
     )
 
     spm_options.add_argument(
         "--spm-frequency",
-        help="Frequency in KGhz. This is estimated to shader clock count. Default is set to 0.5KGHz in tool.",
+        help="Frequency in Ghz. This is estimated to shader clock count. Default is set to 0.5GHz in tool.",
         default=None,
-        type=float,
+        type=str,
     )
     pc_sampling_options = parser.add_argument_group("PC sampling options")
 
@@ -1713,7 +1713,7 @@ def run(app_args, args, **kwargs):
             update_env("ROCPROF_SPM_TIMEOUT_MS", args.spm_timeout, overwrite=True)
 
         if args.spm_frequency:
-            update_env("ROCPROF_SPM_FREQUENCY", args.spm_frequency, overwrite=True)
+            update_env("ROCPROF_SPM_FREQUENCY", float(args.spm_frequency), overwrite=True)
 
     if args.disable_signal_handlers is not None:
         update_env("ROCPROF_SIGNAL_HANDLERS", not args.disable_signal_handlers)

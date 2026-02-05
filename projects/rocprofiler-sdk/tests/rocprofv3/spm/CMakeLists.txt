@@ -22,8 +22,17 @@ set(COUNTER_LIST
     CPC_CPC_STAT_BUSY
     CPC_CPC_STAT_IDLE)
 
+if(NOT ROCPROFILER_MEMCHECK STREQUAL "")
+    set(SANITIZER True)
+else()
+    set(SANITIZER False)
+endif()
+
 rocprofiler_sdk_spm_disabled(IS_SPM_DISABLED)
 set(IS_DISABLED ${IS_SPM_DISABLED})
+if(${SANITIZER})
+    set(IS_DISABLED True)
+endif()
 
 set(rocprofv3-spm-rocpd-env
     "PYTHONPATH=${rocprofiler-sdk_LIB_DIR}/python${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}/site-packages"
