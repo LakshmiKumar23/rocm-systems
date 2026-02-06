@@ -21,22 +21,22 @@ Panel Config:
           value: AVG(TCP_TCR_TCP_STALL_CYCLES_sum)
           unit: cycles
         L1 Cache Backpressured by L2:
-          value: AVG((((TCP_TCR_TCP_STALL_CYCLES * 100) / TCP_GATE_EN2_sum) if (TCP_GATE_EN2_sum != 0) else None))
+          value: (100 * SUM(TCP_TCR_TCP_STALL_CYCLES) / SUM(TCP_GATE_EN2)) if SUM(TCP_GATE_EN2) != 0 else None
           unit: pct
         L1 Cache - TA coalesce rate:
-          value: AVG(((((4 * TA_BUFFER_WAVEFRONTS_sum) * 100) / TA_BUFFER_TOTAL_CYCLES_sum) if (TCP_GATE_EN2_sum != 0) else None))
+          value: (4 * 100* SUM(TA_BUFFER_WAVEFRONTS_sum) / SUM(TA_BUFFER_TOTAL_CYCLES_sum)) if SUM(TCP_GATE_EN2_sum) != 0 else None
           unit: pct
-        L1 Cache - TA stalled by TCP:
+        L1 Cache - TA stall by TCP:
           value: AVG((((TCP_TCP_TA_ADDR_STALL_CYCLES_sum * 100) / TCP_GATE_EN2_sum) if (TCP_GATE_EN2_sum != 0) else None))
           unit: pct
-        L1 Cache - VMEM stalled by L1 Cache:
-          value: AVG((((SQ_VMEM_TA_CMD_FIFO_FULL * 100) / SQ_BUSY_CYCLES) if (SQ_BUSY_CYCLES != 0) else None))
+        L1 Cache - VMEM stall by L1 Cache:
+          value: (100 * SUM(SQ_VMEM_TA_CMD_FIFO_FULL)) / SUM(SQ_BUSY_CYCLES) if SUM(SQ_BUSY_CYCLES) != 0 else None
           unit: pct
-        L1 Cache - TCP stalled caused by UTCL1:
-          value: AVG((((TCP_UTCL1_STALL_INFLIGHT_MAX_sum * 100) / TCP_GATE_EN2_sum) if (TCP_GATE_EN2_sum != 0) else None))
+        L1 Cache - TCP stall caused by UTCL1:
+          value: (100 * SUM(TCP_UTCL1_STALL_INFLIGHT_MAX_sum) / SUM(TCP_GATE_EN2_sum)) if SUM(TCP_GATE_EN2_sum) != 0 else None
           unit: pct
-        L1 Cache - TCP stalled caused by UTCL2:
-          value: AVG((((TCP_UTCL1_STALL_LFIFO_NO_RES_sum * 100) / TCP_GATE_EN2_sum) if (TCP_GATE_EN2_sum != 0) else None))
+        L1 Cache - TCP stall caused by UTCL2:
+          value: (100 * SUM(TCP_UTCL1_STALL_LFIFO_NO_RES_sum) / SUM(TCP_GATE_EN2_sum)) if SUM(TCP_GATE_EN2_sum) != 0 else None
           unit: pct
         L1 Cache - Tag RAM 0 Req:
           value: AVG((TCP_TAGRAM0_REQ_sum / $denom))
