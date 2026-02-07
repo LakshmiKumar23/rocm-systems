@@ -22,16 +22,23 @@ if(NOT LLVM_CLANG OR NOT LLVM_LINK)
   return()
 endif()
 
-# Set default GPU architecture for bitcode
-set(BITCODE_GPU_ARCH "gfx942" CACHE STRING "GPU architecture for device bitcode")
+# Set GPU architectures for bitcode (supports multiple architectures like NVSHMEM)
+# Default to MI300+ series architectures
+set(BITCODE_GPU_ARCHS "gfx942;gfx950" CACHE STRING "GPU architectures for device bitcode (semicolon-separated)")
 
-# Compiler flags for device-only compilation
-set(BITCODE_COMPILE_FLAGS
+# For backwards compatibility, also support single BITCODE_GPU_ARCH
+if(DEFINED BITCODE_GPU_ARCH)
+  set(BITCODE_GPU_ARCHS "${BITCODE_GPU_ARCH}")
+endif()
+
+# Base compiler flags for device-only compilation (architecture-agnostic)
+# Note: No backend-specific defines (ENABLE_IPC_BITCODE/ENABLE_IBGDA_BITCODE)
+# Uses default Context typedef (RO backend), matching Triton's approach
+set(BITCODE_COMPILE_FLAGS_BASE
     -x hip
     --cuda-device-only
     -std=c++20
     -emit-llvm
-    --offload-arch=${BITCODE_GPU_ARCH}
     -I${CMAKE_CURRENT_SOURCE_DIR}/include/rocshmem
     -I${CMAKE_CURRENT_SOURCE_DIR}/include
     -I${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -42,7 +49,7 @@ set(BITCODE_COMPILE_FLAGS
 # Add MPI include directories if available
 if(MPI_CXX_FOUND)
   foreach(mpi_include_dir ${MPI_CXX_INCLUDE_DIRS})
-    list(APPEND BITCODE_COMPILE_FLAGS -I${mpi_include_dir})
+    list(APPEND BITCODE_COMPILE_FLAGS_BASE -I${mpi_include_dir})
   endforeach()
 endif()
 
@@ -88,47 +95,56 @@ if(USE_GDA)
   )
 endif()
 
-# Generate list of bitcode outputs
-set(BITCODE_OBJECTS)
-foreach(src_file ${BITCODE_SOURCES})
-  get_filename_component(src_name ${src_file} NAME_WE)
-  set(bc_file ${CMAKE_CURRENT_BINARY_DIR}/bitcode/${src_name}.bc)
-  list(APPEND BITCODE_OBJECTS ${bc_file})
+# Build bitcode for each GPU architecture (NVSHMEM-style multi-arch approach)
+set(ALL_BITCODE_OUTPUTS)
+foreach(gpu_arch ${BITCODE_GPU_ARCHS})
+  # Architecture-specific compiler flags
+  set(BITCODE_COMPILE_FLAGS ${BITCODE_COMPILE_FLAGS_BASE} --offload-arch=${gpu_arch})
 
-  # Add custom command to compile each source to bitcode
+  # Generate list of bitcode object files for this architecture
+  set(BITCODE_OBJECTS_${gpu_arch})
+  foreach(src_file ${BITCODE_SOURCES})
+    get_filename_component(src_name ${src_file} NAME_WE)
+    set(bc_file ${CMAKE_CURRENT_BINARY_DIR}/bitcode/${gpu_arch}/${src_name}.bc)
+    list(APPEND BITCODE_OBJECTS_${gpu_arch} ${bc_file})
+
+    # Add custom command to compile each source to bitcode
+    add_custom_command(
+      OUTPUT ${bc_file}
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bitcode/${gpu_arch}
+      COMMAND ${LLVM_CLANG} ${BITCODE_COMPILE_FLAGS} -c ${src_file} -o ${bc_file}
+      DEPENDS ${src_file}
+      COMMENT "Compiling ${src_name} to bitcode for ${gpu_arch}"
+      VERBATIM
+    )
+  endforeach()
+
+  # Architecture-specific bitcode library output
+  set(BITCODE_OUTPUT_${gpu_arch} ${CMAKE_CURRENT_BINARY_DIR}/librocshmem_device_${gpu_arch}.bc)
+  list(APPEND ALL_BITCODE_OUTPUTS ${BITCODE_OUTPUT_${gpu_arch}})
+
+  # Add custom command to link all bitcode files for this architecture
   add_custom_command(
-    OUTPUT ${bc_file}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/bitcode
-    COMMAND ${LLVM_CLANG} ${BITCODE_COMPILE_FLAGS} -c ${src_file} -o ${bc_file}
-    DEPENDS ${src_file}
-    COMMENT "Compiling ${src_name} to bitcode"
+    OUTPUT ${BITCODE_OUTPUT_${gpu_arch}}
+    COMMAND ${LLVM_LINK} ${BITCODE_OBJECTS_${gpu_arch}} -o ${BITCODE_OUTPUT_${gpu_arch}}
+    DEPENDS ${BITCODE_OBJECTS_${gpu_arch}}
+    COMMENT "Linking device bitcode for ${gpu_arch}"
     VERBATIM
   )
+
+  # Install architecture-specific bitcode library
+  install(
+    FILES ${BITCODE_OUTPUT_${gpu_arch}}
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    COMPONENT runtime
+  )
+
+  message(STATUS "Device bitcode for ${gpu_arch}: ${BITCODE_OUTPUT_${gpu_arch}}")
 endforeach()
 
-# Final bitcode library output
-set(BITCODE_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/librocshmem_device.bc)
-
-# Add custom command to link all bitcode files
-add_custom_command(
-  OUTPUT ${BITCODE_OUTPUT}
-  COMMAND ${LLVM_LINK} ${BITCODE_OBJECTS} -o ${BITCODE_OUTPUT}
-  DEPENDS ${BITCODE_OBJECTS}
-  COMMENT "Linking device bitcode into librocshmem_device.bc"
-  VERBATIM
-)
-
-# Create custom target for bitcode compilation
+# Create unified custom target for all architectures
 add_custom_target(rocshmem_device_bitcode ALL
-  DEPENDS ${BITCODE_OUTPUT}
+  DEPENDS ${ALL_BITCODE_OUTPUTS}
 )
 
-# Install the bitcode library
-install(
-  FILES ${BITCODE_OUTPUT}
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  COMPONENT runtime
-)
-
-message(STATUS "Device bitcode will be built for ${BITCODE_GPU_ARCH}")
-message(STATUS "Device bitcode output: ${BITCODE_OUTPUT}")
+message(STATUS "Device bitcode will be built for architectures: ${BITCODE_GPU_ARCHS}")
