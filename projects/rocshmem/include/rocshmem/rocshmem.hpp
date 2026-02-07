@@ -88,6 +88,25 @@ __host__ void rocshmem_init(void);
 __host__ void * rocshmem_get_device_ctx();
 
 /**
+ * @brief Initialize rocSHMEM device context for a specific HIP module
+ *
+ * This function queries the ROCSHMEM_CTX_DEFAULT symbol from the provided
+ * HIP module and initializes it with the host-side context using stream-ordered
+ * memory operations. This is required for CUDA graph compatibility.
+ *
+ * @param[in] module    HIP module containing rocSHMEM device code
+ * @param[in] stream    HIP stream to use for context initialization (optional,
+ *                      uses current stream if NULL)
+ *
+ * @return int          0 on success, non-zero on failure
+ *
+ * @note This API is an alternative to manually calling rocshmem_get_device_ctx()
+ *       and rocshmem_set_ctx() in each kernel. It's compatible with torch.cuda.graph()
+ *       because it uses hipMemcpyAsync instead of hipMemcpyFromSymbol.
+ */
+__host__ int rocshmem_hipmodule_init(hipModule_t module, hipStream_t stream = nullptr);
+
+/**
  * @brief Query rocSHMEM remote symmetric heap pointer
  *
  * @param[in]  dest     local symmetric heap allocation pointer for current pe/device
