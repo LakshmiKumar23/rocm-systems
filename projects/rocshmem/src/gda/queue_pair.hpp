@@ -173,8 +173,9 @@ class QueuePair {
    * @param[in] raddr Remote address.
    * @param[in] opcode Operation to be performed.
    */
-  __device__ __attribute__((noinline)) void post_wqe_rma(int pe, int32_t size, uintptr_t laddr, uintptr_t raddr, uint8_t opcode, Collectivity cy);
-  __device__ __attribute__((noinline)) void post_wqe_rma_turn(int pe, int32_t size, uintptr_t laddr, uintptr_t raddr, uint8_t opcode, Collectivity cy);
+  __device__ __attribute__((noinline)) void
+  post_wqe_rma(int pe, int32_t size, uintptr_t laddr, uintptr_t raddr,
+      uint8_t opcode, Collectivity cy);
 
   __device__ __attribute__((noinline)) void post_wqe_rma_single(int32_t size, uintptr_t laddr, uintptr_t raddr, uint8_t opcode, bool ring_db);
   __device__ __attribute__((noinline)) void post_wqe_rma_mt(int pe, int32_t size, uintptr_t laddr, uintptr_t raddr, uint8_t opcode);
@@ -231,7 +232,7 @@ class QueuePair {
 #endif
 #if defined(GDA_IONIC)
   __device__ uint64_t ionic_post_wqe_amo(int pe, int32_t size, uintptr_t raddr, uint8_t opcode, int64_t atomic_data, int64_t atomic_cmp, bool fetch);
-  __device__ void ionic_post_wqe_rma(int pe, int32_t size, uintptr_t laddr, uintptr_t raddr, uint8_t opcode, Collectivity cy);
+  __device__ void ionic_post_wqe_rma(int pe, int32_t size, uintptr_t laddr, uintptr_t raddr, uint8_t opcode, Collectivity cy = THREAD);
   __device__ void ionic_quiet();
 #endif
 

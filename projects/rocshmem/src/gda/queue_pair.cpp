@@ -122,19 +122,11 @@ QueuePair::~QueuePair() {
  ************************ PROVIDER-SPECIFIC HELPERS ***************************
  *****************************************************************************/
 __device__ void QueuePair::post_wqe_rma(int pe, int32_t size, uintptr_t laddr, uintptr_t raddr, uint8_t opcode, Collectivity cy) {
-  switch (gda_provider_) {
+  if (cy == THREAD) {
 #if defined(GDA_IONIC)
-  case GDAProvider::IONIC:
     ionic_post_wqe_rma(pe, size, laddr, raddr, opcode, cy);
     return;
 #endif
-  default:
-    post_wqe_rma_turn(pe, size, laddr, raddr, opcode, cy);
-  }
-}
-
-__device__ void QueuePair::post_wqe_rma_turn(int pe, int32_t size, uintptr_t laddr, uintptr_t raddr, uint8_t opcode, Collectivity cy) {
-  if (cy == THREAD) {
     bool need_turn {true};
     uint64_t turns = __ballot(need_turn);
     while (turns) {
@@ -163,6 +155,11 @@ __device__ void QueuePair::post_wqe_rma_mt(int pe, int32_t size, uintptr_t laddr
 #if defined(GDA_BNXT)
   case GDAProvider::BNXT:
     bnxt_post_wqe_rma(pe, size, laddr, raddr, opcode);
+    return;
+#endif
+#if defined(GDA_IONIC)
+  case GDAProvider::IONIC:
+    ionic_post_wqe_rma(pe, size, laddr, raddr, opcode);
     return;
 #endif
   default:
