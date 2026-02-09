@@ -40,7 +40,7 @@ set(SHARE_INSTALL_PREFIX
 find_program (GIT NAMES git)
 
 # LINTIAN-CPACK interferes with inbox packaging, add an option to disable it but don't disable by default
-option(DISABLE_CPACK "disable LINTIAN from building" OFF)
+option(DISABLE_LINTIAN_SUPPORT "disable LINTIAN from building" OFF)
 
 # Set Lintian Support Flags
 set(BUILD_ENABLE_LINTIAN_OVERRIDES
