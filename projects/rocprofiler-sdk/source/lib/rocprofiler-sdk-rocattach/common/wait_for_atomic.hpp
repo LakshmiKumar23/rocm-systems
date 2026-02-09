@@ -38,7 +38,7 @@ wait_for(std::atomic<T>& flag, T condition, size_t timeout_ms, bool equal)
     {
          if(equal) return flag.load() == condition;
          return flag.load() != condition;
-    }
+    };
     auto start_time       = std::chrono::steady_clock::now();
     auto timeout_duration = std::chrono::milliseconds(timeout_ms);
     auto end_time         = start_time + timeout_duration;
