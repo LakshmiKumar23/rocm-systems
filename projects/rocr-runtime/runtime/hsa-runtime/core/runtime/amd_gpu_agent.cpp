@@ -734,7 +734,7 @@ core::Blit* GpuAgent::CreateBlitSdma(bool use_xgmi, int rec_eng) {
   switch (isa_->GetMajorVersion()) {
     case 9:
       sdma = new BlitSdmaV4();
-      copy_size_override = (isa_->GetMinorVersion() == 0 && isa_->GetStepping() == 10) ?
+      copy_size_override = (isa_->GetMinorVersion() == 0 && isa_->GetStepping() >= 10) ?
                             copy_size_overrides[1] : copy_size_overrides[0];
       break;
     case 10:
@@ -1297,6 +1297,116 @@ hsa_status_t GpuAgent::DmaPreferredEngine(core::Agent& dst_agent, core::Agent& s
   return HSA_STATUS_SUCCESS;
 }
 
+
+hsa_status_t GpuAgent::DmaCopyBatch(const hsa_amd_memory_copy_op_t* ops,
+                                    uint32_t num_ops,
+                                    std::vector<core::Signal*>& dep_signals,
+                                    bool force_copy_on_sdma) {
+  if (num_ops == 0) {
+    return HSA_STATUS_SUCCESS;
+  }
+
+  SetCopyRequestRefCount(true);
+  MAKE_SCOPE_GUARD([&]() { SetCopyRequestRefCount(false); });
+
+  constexpr bool kUseBroadcast = true;
+  constexpr size_t kBroadcastMaxSize = 1024 * 1024;  // 1 MB
+
+  // Broadcast Path
+  // All ops share the same src, size, and completion signal.
+  // SDMA hardware sends a single packet to N destinations simultaneously.
+  if (kUseBroadcast && num_ops > 1) {
+    const void* first_src = ops[0].src;
+    size_t first_size = ops[0].size;
+    hsa_signal_t first_signal = ops[0].completion_signal;
+
+    bool can_broadcast = (first_size < kBroadcastMaxSize);
+    for (uint32_t i = 1; i < num_ops && can_broadcast; ++i) {
+      can_broadcast = (ops[i].src == first_src && ops[i].size == first_size &&
+                       ops[i].completion_signal.handle == first_signal.handle);
+    }
+
+    BlitSdmaBase* sdma_blit = nullptr;
+    if (can_broadcast) {
+      lazy_ptr<core::Blit>& blit = GetBlitObject(BlitHostToDev);
+      if (blit->isSDMA())
+        sdma_blit = static_cast<BlitSdmaBase*>((*blit).get());
+    }
+
+    if (sdma_blit && sdma_blit->BroadcastSupported()) {
+      std::vector<void*> dsts;
+      dsts.reserve(num_ops);
+      for (uint32_t i = 0; i < num_ops; ++i)
+        dsts.push_back(ops[i].dst);
+
+      core::Signal* out_signal = core::Signal::Convert(first_signal);
+      // SDMA broadcast decrements the signal once; subtract the (num_ops-1)
+      // extra decrements that won't happen.
+      out_signal->SubRelaxed(num_ops - 1);
+
+      if (profiling_enabled())
+        out_signal->async_copy_agent(core::Agent::Convert(this->public_handle()));
+
+      return sdma_blit->SubmitLinearCopyBroadcastCommand(
+          dsts, first_src, first_size, dep_signals, *out_signal);
+    }
+  }
+
+  // Regular Path
+  // Process each op individually on its recommended SDMA engine.
+  for (uint32_t i = 0; i < num_ops; ++i) {
+    const auto& op = ops[i];
+
+    core::Agent* dst_agent = core::Agent::Convert(op.dst_agent);
+    core::Agent* src_agent = core::Agent::Convert(op.src_agent);
+    core::Signal* out_signal = core::Signal::Convert(op.completion_signal);
+
+    int engine_offset =
+        rocr::os::Ffs(rec_sdma_eng_id_peers_info_[dst_agent->public_handle().handle]);
+
+    bool is_same_gpu =
+        (src_agent->public_handle().handle == dst_agent->public_handle().handle) &&
+        (dst_agent->public_handle().handle == public_handle_.handle);
+
+    bool is_p2p = !is_same_gpu &&
+                  src_agent->device_type() == core::Agent::kAmdGpuDevice &&
+                  dst_agent->device_type() == core::Agent::kAmdGpuDevice;
+
+    if ((is_p2p &&
+        core::Runtime::runtime_singleton_->flag().enable_peer_sdma() == Flag::SDMA_DISABLE) ||
+        core::Runtime::runtime_singleton_->flag().enable_sdma() == Flag::SDMA_DISABLE) {
+      engine_offset = BlitDevToDev;
+    } else if (is_same_gpu && !force_copy_on_sdma) {
+      engine_offset = BlitDevToDev;
+    } else if (engine_offset == 0) {
+      // No recommended engine, fall back to DmaCopy for this op
+      hsa_status_t stat = DmaCopy(op.dst, *dst_agent, op.src, *src_agent,
+                                  op.size, dep_signals, *out_signal);
+      if (stat != HSA_STATUS_SUCCESS) {
+        return stat;
+      }
+      continue;
+    }
+
+    lazy_ptr<core::Blit>& blit = GetBlitObject(engine_offset);
+
+    if (profiling_enabled()) {
+      out_signal->async_copy_agent(core::Agent::Convert(this->public_handle()));
+    }
+
+    std::vector<core::Signal*> gang_signals(0);
+
+    hsa_status_t stat = blit->SubmitLinearCopyCommand(
+        op.dst, op.src, op.size, dep_signals, *out_signal, gang_signals);
+
+    if (stat != HSA_STATUS_SUCCESS) {
+      return stat;
+    }
+  }
+
+  return HSA_STATUS_SUCCESS;
+}
+
 hsa_status_t GpuAgent::DmaCopyRect(const hsa_pitched_ptr_t* dst, const hsa_dim3_t* dst_offset,
                                    const hsa_pitched_ptr_t* src, const hsa_dim3_t* src_offset,
                                    const hsa_dim3_t* range, hsa_amd_copy_direction_t dir,
@@ -1849,7 +1959,7 @@ hsa_status_t GpuAgent::QueueCreate(size_t size, hsa_queue_type32_t queue_type, u
 
   auto aql_queue = new AqlQueue(shared_queue, this, size, node_id(), scratch, event_callback, data,
                                 flags);
-  
+
   *queue = aql_queue;
   aql_queues_.push_back(aql_queue);
 

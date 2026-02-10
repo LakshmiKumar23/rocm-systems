@@ -75,6 +75,13 @@ class BlitSdmaBase : public core::Blit {
   virtual hsa_status_t SubmitCommand(const void* cmds, size_t cmd_size, uint64_t size,
                                      const std::vector<core::Signal*>& dep_signals,
                                      core::Signal& out_signal, std::vector<core::Signal*>& gang_signals) = 0;
+
+  virtual hsa_status_t SubmitLinearCopyBroadcastCommand(
+      const std::vector<void*>& dsts, const void* src, size_t size,
+      std::vector<core::Signal*>& dep_signals,
+      core::Signal& out_signal) = 0;
+
+  virtual bool BroadcastSupported() const = 0;
 };
 
 template <bool useGCR> class BlitSdma : public BlitSdmaBase {
@@ -132,6 +139,21 @@ template <bool useGCR> class BlitSdma : public BlitSdmaBase {
                                              std::vector<core::Signal*>& dep_signals,
                                              core::Signal& out_signal) override;
 
+  /// @brief Submit a broadcast linear copy command. Copies from a single source
+  /// to multiple destinations using SDMA broadcast packets (2 dsts per packet).
+  /// If the destination count is odd, the last destination uses a regular
+  /// linear copy packet. Large transfers are broken into size-chunked packets.
+  ///
+  /// @param dsts Vector of destination memory addresses.
+  /// @param src Memory address of the copy source.
+  /// @param size Size of the data to be copied to each destination.
+  /// @param dep_signals Arrays of dependent signal.
+  /// @param out_signal Output signal.
+  hsa_status_t SubmitLinearCopyBroadcastCommand(
+      const std::vector<void*>& dsts, const void* src, size_t size,
+      std::vector<core::Signal*>& dep_signals,
+      core::Signal& out_signal) override;
+
   /// @brief Submit a linear fill command to the queue buffer
   ///
   /// @param ptr Memory address of the fill destination.
@@ -145,6 +167,7 @@ template <bool useGCR> class BlitSdma : public BlitSdmaBase {
   virtual uint64_t PendingBytes() override;
   virtual void GangLeader(bool gang_leader) override { gang_leader_ = gang_leader; }
   virtual bool GangLeader() const override { return gang_leader_; }
+  bool BroadcastSupported() const override { return broadcast_supported_; }
 
  private:
   /// @brief Acquires the address into queue buffer where a new command
@@ -196,6 +219,9 @@ template <bool useGCR> class BlitSdma : public BlitSdmaBase {
 
   void BuildCopyCommand(char* cmd_addr, uint32_t num_copy_command, void* dst,
                         const void* src, size_t size);
+
+  void BuildBroadcastCopyCommand(char* cmd_addr, uint32_t num_copy_command,
+                                 void* dst1, void* dst2, const void* src, size_t size);
 
   void BuildCopyRectCommand(const std::function<void*(size_t)>& append,
                             const hsa_pitched_ptr_t* dst, const hsa_dim3_t* dst_offset,
@@ -268,6 +294,8 @@ template <bool useGCR> class BlitSdma : public BlitSdmaBase {
 
   static const uint32_t linear_copy_command_size_;
 
+  static const uint32_t broadcast_copy_command_size_;
+
   static const uint32_t fill_command_size_;
 
   static const uint32_t fence_command_size_;
@@ -310,6 +338,12 @@ template <bool useGCR> class BlitSdma : public BlitSdmaBase {
 
   /// Minimum submission size in bytes.
   size_t min_submission_size_;
+
+  /// True if SDMA supports broadcast linear copy (one src -> two dst).
+  bool broadcast_supported_;
+
+  /// True if SDMA supports multicast copy  (one src -> multiple dst).
+  bool multicast_supported_;
 };
 
 

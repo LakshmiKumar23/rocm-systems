@@ -66,9 +66,10 @@
  * - 1.13 - hsa_amd_pointer_info: Added new registered field to hsa_amd_pointer_info_t
  * - 1.14 - hsa_amd_ais_file_write, hsa_amd_ais_file_read
  * - 1.15 - hsa_amd_register_system_event_handler: HSA_AMD_SYSTEM_SHUTDOWN
+ * - 1.16 - hsa_amd_memory_async_batch_copy
  */
 #define HSA_AMD_INTERFACE_VERSION_MAJOR 1
-#define HSA_AMD_INTERFACE_VERSION_MINOR 16
+#define HSA_AMD_INTERFACE_VERSION_MINOR 17
 
 #ifdef __cplusplus
 extern "C" {
@@ -1812,6 +1813,56 @@ hsa_status_t HSA_API
                               hsa_signal_t completion_signal,
                               hsa_amd_sdma_engine_id_t engine_id,
                               bool force_copy_on_sdma);
+
+/**
+ * @brief Describes a single copy operation within a batch.
+ */
+typedef struct hsa_amd_memory_copy_op_s {
+  void* dst;                   /**< Destination pointer */
+  hsa_agent_t dst_agent;       /**< Destination agent */
+  const void* src;             /**< Source pointer */
+  hsa_agent_t src_agent;       /**< Source agent */
+  size_t size;                 /**< Size of the copy in bytes */
+  hsa_signal_t completion_signal; /**< Completion signal for this copy operation */
+  uint64_t reserved[4];        /**< Reserved for future use. Must be zero. */
+} hsa_amd_memory_copy_op_t;
+
+/**
+ * @brief Submits a batch of asynchronous memory copy operations.
+ *
+ * @details Submits multiple memory copy operations as a batch. Each copy
+ * operation has its own source, destination, agents, and completion signal.
+ * All operations in the batch share the same dependency signals and
+ * force_copy_on_sdma flag.
+ *
+ * Each copy operation is signaled independently via its own completion_signal
+ * field in the hsa_amd_memory_copy_op_t struct. The caller is responsible for
+ * creating and waiting on these signals.
+ *
+ * @param[in] copy_ops Array of copy operation descriptors.
+ *
+ * @param[in] num_copy_ops Number of copy operations in the array.
+ *
+ * @param[in] num_dep_signals Number of dependent signals.
+ *
+ * @param[in] dep_signals Array of dependent signals that all copy operations
+ * must wait on before starting.
+ *
+ * @param[in] force_copy_on_sdma If true, forces the copy over SDMA even when
+ * dst_agent == src_agent (which normally uses blit kernels).
+ *
+ * @retval ::HSA_STATUS_SUCCESS The batch copy was submitted successfully.
+ *
+ * @retval ::HSA_STATUS_ERROR_INVALID_ARGUMENT copy_ops is NULL, num_copy_ops
+ * is 0, any src/dst pointers are NULL, or any completion_signal is invalid.
+ */
+hsa_status_t HSA_API
+    hsa_amd_memory_async_batch_copy(const hsa_amd_memory_copy_op_t* copy_ops,
+                              uint32_t num_copy_ops,
+                              uint32_t num_dep_signals,
+                              const hsa_signal_t* dep_signals,
+                              bool force_copy_on_sdma);
+
 /**
  * @brief Reports the availability of SDMA copy engines.
  *

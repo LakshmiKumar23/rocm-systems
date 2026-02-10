@@ -82,6 +82,9 @@ template <bool useGCR>
 const uint32_t BlitSdma<useGCR>::linear_copy_command_size_ = sizeof(SDMA_PKT_COPY_LINEAR);
 
 template <bool useGCR>
+const uint32_t BlitSdma<useGCR>::broadcast_copy_command_size_ = sizeof(SDMA_PKT_COPY_LINEAR_BROADCAST);
+
+template <bool useGCR>
 const uint32_t BlitSdma<useGCR>::fill_command_size_ = sizeof(SDMA_PKT_CONSTANT_FILL);
 
 template <bool useGCR>
@@ -115,7 +118,9 @@ BlitSdma<useGCR>::BlitSdma()
       hdp_flush_support_(false),
       gang_leader_(false),
       is_ganged_(false),
-      min_submission_size_(0) {
+      min_submission_size_(0),
+      broadcast_supported_(false),
+      multicast_supported_(false) {
   std::memset(&queue_resource_, 0, sizeof(queue_resource_));
 }
 
@@ -140,17 +145,23 @@ hsa_status_t BlitSdma<useGCR>::Initialize(const core::Agent& agent, bool use_xgm
     return HSA_STATUS_ERROR;
   }
 
+  // Cache ISA version for capability detection below.
+  const auto isa_version = agent_->supported_isas()[0]->GetVersion();
+  const auto major = agent_->supported_isas()[0]->GetMajorVersion();
+  const auto minor = agent_->supported_isas()[0]->GetMinorVersion();
+  const auto stepping = agent_->supported_isas()[0]->GetStepping();
+
   // Some GFX9 devices require a minimum of 64 DWORDS per ring buffer submission.
-  if (agent_->supported_isas()[0]->GetVersion() >= core::Isa::Version(9, 0, 0) &&
-     (agent_->supported_isas()[0]->GetVersion() <= core::Isa::Version(9, 0, 4) ||
-     agent_->supported_isas()[0]->GetVersion() == core::Isa::Version(9, 0, 12))) {
+  if (isa_version >= core::Isa::Version(9, 0, 0) &&
+     (isa_version <= core::Isa::Version(9, 0, 4) ||
+      isa_version == core::Isa::Version(9, 0, 12))) {
     min_submission_size_ = 256;
   }
 
   const core::Runtime::LinkInfo& link =
             core::Runtime::runtime_singleton_->GetLinkInfo( agent_->node_id(),
                 core::Runtime::runtime_singleton_->cpu_agents()[0]->node_id());
-  if (agent_->supported_isas()[0]->GetVersion() == core::Isa::Version(7, 0, 1)) {
+  if (isa_version == core::Isa::Version(7, 0, 1)) {
     platform_atomic_support_ = false;
   } else {
     platform_atomic_support_ = link.info.atomic_support_64bit;
@@ -160,10 +171,19 @@ hsa_status_t BlitSdma<useGCR>::Initialize(const core::Agent& agent, bool use_xgm
   // gfx90a can support xGMI host to device connections so bypass HDP flush
   // in this case.
   // gfx101x seems to have issues with HDP flushes
-  if (agent_->supported_isas()[0]->GetMajorVersion() >= 9 &&
-      !(agent_->supported_isas()[0]->GetMajorVersion() == 10 && agent_->supported_isas()[0]->GetMinorVersion() == 1)) {
+  if (major >= 9 && !(major == 10 && minor == 1)) {
     hdp_flush_support_ = link.info.link_type != HSA_AMD_LINK_INFO_TYPE_XGMI;
   }
+
+  // Broadcast linear copy supported on MI200+ and all SDMA 5.x/6.x+.
+  if (major >= 10) {
+    broadcast_supported_ = true;
+  } else if (major == 9) {
+    broadcast_supported_ = (minor >= 4) || (minor == 0 && stepping >= 10);
+  }
+
+  // Multicast not yet supported on any current hardware.
+  multicast_supported_ = false;
 
   // Allocate queue buffer.
   queue_start_addr_ =
@@ -630,6 +650,61 @@ hsa_status_t BlitSdma<useGCR>::SubmitLinearCopyCommand(void* dst, const void* sr
 }
 
 template <bool useGCR>
+hsa_status_t BlitSdma<useGCR>::SubmitLinearCopyBroadcastCommand(
+    const std::vector<void*>& dsts, const void* src, size_t size,
+    std::vector<core::Signal*>& dep_signals,
+    core::Signal& out_signal) {
+
+  if (!broadcast_supported_) {
+    return HSA_STATUS_ERROR_INVALID_ARGUMENT;
+  }
+
+  if (dsts.empty() || size == 0) {
+    return HSA_STATUS_ERROR_INVALID_ARGUMENT;
+  }
+
+  // Each broadcast packet copies from one src to two dsts.
+  // An odd trailing destination falls back to a regular linear copy.
+  const uint32_t num_pairs = static_cast<uint32_t>(dsts.size() / 2);
+  const bool has_remainder = (dsts.size() % 2) != 0;
+
+  const size_t max_copy_size = max_single_linear_copy_size_ ? max_single_linear_copy_size_ :
+                               SDMA_PKT_COPY_LINEAR_BROADCAST::kMaxSize_;
+  const uint32_t num_chunks = static_cast<uint32_t>((size + max_copy_size - 1) / max_copy_size);
+
+  // Total command buffer: broadcast packets for each pair, plus linear packets
+  // for the remainder destination, all multiplied by the number of size chunks.
+  const size_t broadcast_bytes = num_pairs * num_chunks *
+                                 static_cast<size_t>(broadcast_copy_command_size_);
+  const size_t linear_bytes = has_remainder ?
+                              (num_chunks * static_cast<size_t>(linear_copy_command_size_)) : 0;
+  const size_t total_cmd_size = broadcast_bytes + linear_bytes;
+
+  std::vector<char> cmd_buf(total_cmd_size, 0);
+  char* cmd_ptr = cmd_buf.data();
+
+  // Build broadcast packets for each destination pair.
+  for (uint32_t p = 0; p < num_pairs; ++p) {
+    BuildBroadcastCopyCommand(cmd_ptr, num_chunks,
+                              dsts[p * 2], dsts[p * 2 + 1], src, size);
+    cmd_ptr += num_chunks * broadcast_copy_command_size_;
+  }
+
+  // Handle the remaining odd destination with a regular linear copy.
+  if (has_remainder) {
+    BuildCopyCommand(cmd_ptr, num_chunks, dsts.back(),
+                     src, size);
+  }
+
+  // Total data moved across bus = size * number of destinations.
+  const uint64_t total_bytes_moved = static_cast<uint64_t>(size) * dsts.size();
+
+  std::vector<core::Signal*> no_gang;
+  return SubmitCommand(cmd_buf.data(), total_cmd_size, total_bytes_moved,
+                       dep_signals, out_signal, no_gang);
+}
+
+template <bool useGCR>
 hsa_status_t BlitSdma<useGCR>::SubmitCopyRectCommand(
     const hsa_pitched_ptr_t* dst, const hsa_dim3_t* dst_offset, const hsa_pitched_ptr_t* src,
     const hsa_dim3_t* src_offset, const hsa_dim3_t* range, std::vector<core::Signal*>& dep_signals,
@@ -898,6 +973,51 @@ void BlitSdma<useGCR>::BuildCopyCommand(char* cmd_addr, uint32_t num_copy_comman
     packet_addr->DST_ADDR_HI_UNION.dst_addr_63_32 = ptrhigh32(cur_dst);
 
     cmd_addr += linear_copy_command_size_;
+    cur_size += copy_size;
+  }
+
+  assert(cur_size == size);
+}
+
+template <bool useGCR>
+void BlitSdma<useGCR>::BuildBroadcastCopyCommand(char* cmd_addr, uint32_t num_copy_command,
+                                                  void* dst1, void* dst2,
+                                                  const void* src, size_t size) {
+  size_t cur_size = 0;
+  const size_t max_copy_size = max_single_linear_copy_size_ ? max_single_linear_copy_size_ :
+                                                              SDMA_PKT_COPY_LINEAR_BROADCAST::kMaxSize_;
+  for (uint32_t i = 0; i < num_copy_command; ++i) {
+    const uint32_t copy_size =
+        static_cast<uint32_t>(std::min((size - cur_size), max_copy_size));
+
+    void* cur_dst1 = static_cast<char*>(dst1) + cur_size;
+    void* cur_dst2 = static_cast<char*>(dst2) + cur_size;
+    const void* cur_src = static_cast<const char*>(src) + cur_size;
+
+    SDMA_PKT_COPY_LINEAR_BROADCAST* packet_addr =
+        reinterpret_cast<SDMA_PKT_COPY_LINEAR_BROADCAST*>(cmd_addr);
+
+    memset(packet_addr, 0, sizeof(SDMA_PKT_COPY_LINEAR_BROADCAST));
+
+    packet_addr->HEADER_UNION.op = SDMA_OP_COPY;
+    packet_addr->HEADER_UNION.sub_op = SDMA_SUBOP_COPY_LINEAR_BROADCAST;
+    packet_addr->HEADER_UNION.broadcast = 1;
+
+    if (max_copy_size == (1 << 30) - 1)
+      packet_addr->COUNT_UNION.count_ext.count = copy_size - 1;
+    else
+      packet_addr->COUNT_UNION.count.count = copy_size - 1;
+
+    packet_addr->SRC_ADDR_LO_UNION.src_addr_31_0 = ptrlow32(cur_src);
+    packet_addr->SRC_ADDR_HI_UNION.src_addr_63_32 = ptrhigh32(cur_src);
+
+    packet_addr->DST_ADDR_LO_UNION.dst_addr_31_0 = ptrlow32(cur_dst1);
+    packet_addr->DST_ADDR_HI_UNION.dst_addr_63_32 = ptrhigh32(cur_dst1);
+
+    packet_addr->DST2_ADDR_LO_UNION.dst2_addr_31_0 = ptrlow32(cur_dst2);
+    packet_addr->DST2_ADDR_HI_UNION.dst2_addr_63_32 = ptrhigh32(cur_dst2);
+
+    cmd_addr += broadcast_copy_command_size_;
     cur_size += copy_size;
   }
 
