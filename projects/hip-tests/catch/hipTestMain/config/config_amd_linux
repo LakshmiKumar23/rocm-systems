@@ -148,6 +148,24 @@
         "Unit_Device_h2log10_Accuracy_Positive",
         "Unit_Device___hfma2_Accuracy_Positive",
     #endif
+    #if defined ENABLE_ADDRESS_SANITIZER
+        "=== These tests are testing for features which throw off the sanitizer like check for values after free===",
+        "Unit_hipMalloc_Multithreaded_MultiGPU",
+        "Unit_hipFreeDoubleHost",
+        "Unit_hipFreeDoubleDevice",
+        "Unit_hipHostFree_DoubleFree",
+        "Unit_hipFreeHost_DoubleFree",
+        "Unit_hipHostRegister_Negative - int",
+        "Unit_hipHostRegister_Negative - float",
+        "Unit_hipHostRegister_Negative - double",
+        "Unit_hipMemset_Negative_OutOfBoundsPtr",
+        "Unit_hipMallocManaged_Large",
+        "=== They fail with ASAN",
+        "Unit_hipMemGetHandleForAddressRange_DeviceMemory",
+        "Unit_hipMemGetHandleForAddressRange_DeviceMemory_InAnotherDevice",
+        "Unit_deviceAllocation_Malloc_SingleCodeObj",
+        "Unit_deviceAllocation_New_SingleCodeObj",
+    #endif
     #if defined gfx90a || defined gfx942 || defined gfx950
         "=== SWDEV-443630 : Below test failed in stress test on 19/01/24 ===",
         "Unit_Multi_Grid_Group_Positive_Sync",
