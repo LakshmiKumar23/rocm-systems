@@ -2023,7 +2023,146 @@ bool KernelBlitManager::fillBuffer1D(device::Memory& memory, const void* pattern
     result = HostBlitManager::fillBuffer(memory, pattern, patternSize, size, origin, size, entire);
     synchronize();
     return result;
+  }
+  std::cout << "patternSize: " << patternSize << std::endl;
+  std::cout << "count: " << size[0] << std::endl;
+
+  // Extract buffer
+  cl_mem mem = as_cl<amd::Memory>(memory.owner());
+  bool isGraphPktCapturing =
+      gpu().command() != nullptr && gpu().command()->getPktCapturingState();
+  unsigned char* constBuf = isGraphPktCapturing
+                      ? (unsigned char*)gpu().command()->getGraphKernArg(kCBSize, kCBAlignment, dev().index())
+                      : (unsigned char*)gpu().allocKernArg(kCBSize, kCBAlignment);
+
+  // Add back offset to pointer
+  constBuf += origin[0];
+
+  // Need to convert sizeof value to bits
+  size_t address_alignment = (uintptr_t)constBuf % sizeof(int32_t);
+  if (patternSize == sizeof(int)) {
+    std::cout << "fillBuffer1D Unaligned" << std::endl;
+    constexpr uint32_t kFillType = FillBufferUnAligned;
+
+    std::cout << "address_alignment: " << address_alignment << std::endl;
+
+    // Debug sanity checks
+    assert(patternSize > address_alignment &&
+           "Address alignment must be less than the pattern size");
+    assert((patternSize > 0) && ((patternSize & (patternSize - 1)) == 0) &&
+           "Pattern must be power of 2");
+
+    // Pattern values
+    constexpr size_t pattern_size_in_bytes = sizeof(int);
+    const size_t pattern_offset = patternSize - address_alignment;
+
+    // Construct body and body_size
+    unsigned char* pattern_subsections = (unsigned char*)pattern;
+    const size_t body_size = patternSize;
+    union shifted_body {
+      int32_t shifted_pattern;
+      unsigned char pattern_elements[4];
+    } body_pattern;
+    // Copy pattern from offset and loop around using patternSize
+    for (size_t j = 0; j < patternSize; ++j) {
+      //body_pattern.pattern_elements[j] = pattern_subsections[(j + pattern_offset) & patternSize];
+      body_pattern.pattern_elements[j] = pattern_subsections[j];
+    }
+    
+    // Construct tiled body
+    struct alignas(16) tiled_body {
+      int32_t pattern_elements[4];
+    } tiled_pattern;
+    static_assert(sizeof(tiled_pattern) == 16, "tiled_pattern should be 16 bytes");
+    static_assert(alignof(tiled_pattern) == 16, "tiled_pattern should be 16 bytes");
+    for (size_t j = 0; j < 4; ++j) {
+      tiled_pattern.pattern_elements[j] = body_pattern.shifted_pattern;
+    }
+    for (size_t j = 0; j < 4; ++j) {
+      std::cout << "tiled_pattern.pattern_elements[" << j << "]: " << tiled_pattern.pattern_elements[j] << std::endl;
+    }
+    std::cout << std::endl;
+
+    // Calculate head, body, body-tail, tail, and tiled body counts
+    // Head, body, body-tail, and tail counts are in range [0, 3]
+    // Body tile in range of [0, max_size_value]
+    // In kernel handle head, body, body-tail, and tail in first pass.
+    // Then loop through strided body_tile pass
+    // Construct head and tail offset and size
+    size_t count = size[0];
+    constexpr size_t tile_size = sizeof(ulong) * 2;
+    uintptr_t buf_addr = reinterpret_cast<uintptr_t>(constBuf);
+    uintptr_t end_addr = buf_addr + count;
+
+    const ushort head_count = static_cast<ushort>(address_alignment);
+
+    uintptr_t four_aligned_start = alignUp(buf_addr, sizeof(int32_t));
+    uintptr_t tile_start = alignUp(buf_addr, tile_size);
+    uintptr_t four_aligned_end = alignDown(end_addr, sizeof(int32_t));
+    uintptr_t tile_end = alignDown(four_aligned_end, tile_size);
+
+    const size_t body_tile_count =
+        (tile_end > tile_start) ? (tile_end - tile_start) / tile_size : 0;
+
+    const ushort body_count =
+        (tile_start > four_aligned_start)
+            ? static_cast<ushort>((tile_start - four_aligned_start) / sizeof(int32_t))
+            : static_cast<ushort>(0);
+
+    const ushort body_tail_count =
+        (four_aligned_end > tile_end)
+            ? static_cast<ushort>((four_aligned_end - tile_end) / sizeof(int32_t))
+            : static_cast<ushort>(0);
+
+    const ushort tail_count = static_cast<ushort>(end_addr - four_aligned_end);
+
+    std::cout << "buffer address: " << (void*)constBuf << std::endl;
+    std::cout << "head_count: " << head_count << std::endl;
+    std::cout << "body_count: " << body_count << std::endl;
+    std::cout << "body_tail_count: " << body_tail_count << std::endl;
+    std::cout << "tail_count: " << tail_count << std::endl;
+    std::cout << "body_tile_count: " << body_tile_count << std::endl;
+    assert(head_count < 4 && "head_count should be less than 4");
+    assert(body_count < 4 && "body_count should be less than 4");
+    assert(body_tail_count < 4 && "body_tail_count should be less than 4");
+    assert(tail_count < 4 && "tail_count should be less than 4");
+
+    constexpr size_t localWorkSize = 256;
+    // TODO: Update for handle 32 warp/sub_group sizes
+    // We require at least 1 warp/sub_group
+    const size_t work_items = std::max<size_t>(alignUp(body_tile_count, localWorkSize), 64);
+    size_t globalWorkSize =
+        std::min(dev().settings().limit_blit_wg_ * localWorkSize, work_items);
+    const size_t body_tile_passes = 
+        (body_tile_count + globalWorkSize - 1) / globalWorkSize;
+    std::cout << "body_tile_passes: " << body_tile_passes << std::endl;
+
+    memcpy(constBuf, pattern, patternSize);
+    constexpr bool kDirectVa = true;
+    if (sizeof(tiled_pattern) != 16) {
+      assert(false && "tiled_pattern should be 16 bytes");
+    }
+    setArgument(kernels_[kFillType], 0, sizeof(cl_mem), &mem, origin[0]);
+    setArgument(kernels_[kFillType], 1, sizeof(cl_mem), constBuf, 0, nullptr, kDirectVa);
+    setArgument(kernels_[kFillType], 2, sizeof(body_pattern), &body_pattern);
+    setArgument(kernels_[kFillType], 3, sizeof(tiled_pattern), &tiled_pattern);
+    setArgument(kernels_[kFillType], 4, sizeof(body_tile_count), &body_tile_count);
+    setArgument(kernels_[kFillType], 5, sizeof(body_tile_passes), &body_tile_passes);
+    setArgument(kernels_[kFillType], 6, sizeof(globalWorkSize), &globalWorkSize /* stride */);
+    setArgument(kernels_[kFillType], 7, sizeof(body_count), &body_count);
+    setArgument(kernels_[kFillType], 8, sizeof(body_tail_count), &body_tail_count);
+    setArgument(kernels_[kFillType], 9, sizeof(head_count), &head_count);
+    setArgument(kernels_[kFillType], 10, sizeof(tail_count), &tail_count);
+
+    std::cout << "globalWorkSize: " << globalWorkSize << std::endl;
+    std::cout << "localWorkSize: " << localWorkSize << std::endl;
+    size_t globalWorkOffset[3] = {0, 0, 0};
+    amd::NDRangeContainer ndrange(1, globalWorkOffset, &globalWorkSize, &localWorkSize);
+    address parameters = captureArguments(kernels_[kFillType]);
+    result = gpu().submitKernelInternal(ndrange, *kernels_[kFillType], parameters, nullptr);
+    releaseArguments(parameters);
   } else {
+    std::cout << "fillBuffer1D Aligned" << std::endl;
     // Pack the fill buffer info, that handles unaligned memories.
     std::vector<FillBufferInfo> packed_vector{};
     FillBufferInfo::PackInfo(memory, size[0], origin[0], pattern, patternSize, packed_vector);
@@ -2045,7 +2184,6 @@ bool KernelBlitManager::fillBuffer1D(device::Memory& memory, const void* pattern
                            : (kpattern_size & 0x1) == 0 ? sizeof(uint16_t)
                                                         : sizeof(uint8_t);
       // Program kernels arguments for the fill operation
-      cl_mem mem = as_cl<amd::Memory>(memory.owner());
       setArgument(kernels_[kFillType], 0, sizeof(cl_mem), &mem, koffset);
       const size_t localWorkSize = 256;
       size_t globalWorkSize = std::min(dev().settings().limit_blit_wg_ * localWorkSize, kfill_size);
