@@ -27,16 +27,21 @@
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
 
 // Signal handler - handles signal without affecting execution
+namespace
+{
+int signal_received = 0;
 void
 signal_handler(int signum)
 {
-    std::cout << "Attachment test process " << getpid() << " received signal " << signum << "\n";
+    signal_received = signum;
 }
+}  // namespace
 
 /* Macro for checking GPU API return values */
 #define HIP_ASSERT(call)                                                                           \
@@ -86,8 +91,13 @@ execute_kernels(const size_t      tid,
     }
 
     // Run kernels in a loop for a while
-    std::cout << "Starting kernel execution loop for thread " << tid << " with stream " << stream_id
-              << " on device " << device_id << "...\n";
+    {
+        // compose string first to avoid multithreaded handling of cout << operator
+        std::stringstream msg;
+        msg << "Starting kernel execution loop for thread " << tid << " with stream " << stream_id
+            << " on device " << device_id << "...\n";
+        std::cout << msg.str();
+    }
     const int num_iterations = 30;
 
     for(int iter = 0; iter < num_iterations; ++iter)
@@ -102,7 +112,7 @@ execute_kernels(const size_t      tid,
         if(err != hipSuccess)
         {
             std::cerr << "Failed to copy data for thread " << tid << " with stream " << stream_id
-                      << " on device " << device_id << "...\n";
+                      << " on device " << device_id << "..." << std::endl;
             roctxRangePop();  // Removed - ROCTx not linked
             break;
         }
@@ -121,7 +131,7 @@ execute_kernels(const size_t      tid,
         if(err != hipSuccess)
         {
             std::cerr << "Failed to copy data for thread " << tid << " with stream " << stream_id
-                      << " on device " << device_id << "...\n";
+                      << " on device " << device_id << "..." << std::endl;
             roctxRangePop();  // Removed - ROCTx not linked
             break;
         }
@@ -132,7 +142,7 @@ execute_kernels(const size_t      tid,
         if(err != hipSuccess)
         {
             std::cerr << "Failed to synchronize stream " << stream_id << " with thread " << tid
-                      << " on device " << device_id << "...\n";
+                      << " on device " << device_id << "..." << std::endl;
             roctxRangePop();  // Removed - ROCTx not linked
             break;
         }
@@ -142,9 +152,13 @@ execute_kernels(const size_t      tid,
         // Small delay between iterations
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
-
-    std::cout << "Kernel execution loop completed for thread " << tid << " with stream "
-              << stream_id << " on device " << device_id << "...\n";
+    {
+        // compose string first to avoid multithreaded handling of cout << operator
+        std::stringstream msg;
+        msg << "Kernel execution loop completed for thread " << tid << " with stream " << stream_id
+            << " on device " << device_id << "...\n";
+        std::cout << msg.str();
+    }
 
     // Cleanup
     HIP_ASSERT(hipFree(d_data));
@@ -193,7 +207,7 @@ main(int argc, char** argv)
     if(ndevices > device_count)
     {
         std::cout << "Using " << device_count << " HIP devices instead of the requested "
-                  << ndevices << "\n";
+                  << ndevices << std::endl;
         ndevices = device_count;
     }
 
@@ -215,6 +229,11 @@ main(int argc, char** argv)
     for(auto itr : _streams)
         HIP_ASSERT(hipStreamDestroy(itr));
 
+    if(signal_received)
+    {
+        std::cout << "Attachment test process " << getpid() << " received signal "
+                  << signal_received << std::endl;
+    }
     std::cout << "Attachment test app finished" << std::endl;
 
     return 0;
