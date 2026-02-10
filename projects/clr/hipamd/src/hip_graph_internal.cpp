@@ -20,7 +20,8 @@
 
 #include "hip_graph_internal.hpp"
 #include <queue>
-#include <stdio.h>
+
+#define USE_RUN_NODE_DFS 1
 
 #define CASE_STRING(X, C)                                                                          \
   case X:                                                                                          \
@@ -511,7 +512,7 @@ void Graph::UpdateStreams(hip::Stream* launch_stream,
   }
 }
 
-
+#if USE_RUN_NODE_DFS
 // ================================================================================================
 bool Graph::RunOneNodeDFS(Node top_node, bool top_wait) {
   
@@ -565,7 +566,7 @@ bool Graph::RunOneNodeDFS(Node top_node, bool top_wait) {
       }
     } // for
     if (node->GetType() == hipGraphNodeTypeGraph) {
-      fprintf(stderr, "Child graphs are not handled!\n");
+      XPUT("Child graphs are not handled!");
     } else {
       // Assing a stream to the current node
       node->SetStream(streams_);
@@ -610,96 +611,97 @@ bool Graph::RunOneNodeDFS(Node top_node, bool top_wait) {
   } // while
   return true;
 }
+#else // USE_RUN_NODE_DFS
+bool Graph::RunOneNode(Node node, bool wait) {
+  if (node->launch_id_ != -1) return true;
 
-// bool Graph::RunOneNode(Node node, bool wait) {
-//   if (node->launch_id_ != -1) return true;
+    // Clear the storage of the wait nodes
+    memset(&wait_order_[0], 0, sizeof(Node) * wait_order_.size());
+    amd::Command::EventWaitList waitList;
+    // Walk through dependencies and find the last launches on each parallel stream
+    for (auto depNode : node->GetDependencies()) {
+      // Process only the nodes that have been submitted
+      if (depNode->launch_id_ != -1) {
+        // If it's the same stream then skip the signal, since it's in order
+        if (depNode->stream_id_ != node->stream_id_) {
+          // If there is no wait node on the stream, then assign one
+          if ((wait_order_[depNode->stream_id_] == nullptr) ||
+          // If another node executed on the same stream, then use the latest launch only,
+          // since the same stream has in-order run
+              (wait_order_[depNode->stream_id_]->launch_id_ < depNode->launch_id_)) {
+            wait_order_[depNode->stream_id_] = depNode;
+          }
+        }
+      } else {
+        // It should be a safe return,
+        // since the last edge to this dependency has to submit the command
+        return true;
+      }
+    }
+    // Create a wait list from the last launches of all dependencies
+    for (auto dep : wait_order_) {
+      if (dep == nullptr) continue;
+            // Add all commands in the wait list
+      if (dep->GetType() != hipGraphNodeTypeGraph) {
+        for (auto command : dep->GetCommands()) {
+          // XPUT("dep command: %s", command->Xstring().c_str());
+          waitList.push_back(command);
+        }
+        continue;
+      }
+    } // for
+    if (node->GetType() == hipGraphNodeTypeGraph) {
+      // Process child graph separately, since, there is no connection
+      auto child = reinterpret_cast<hip::ChildGraphNode*>(node)->GetChildGraph();
+      if (!reinterpret_cast<hip::ChildGraphNode*>(node)->GetGraphCaptureStatus()) {
+        child->RunNodes(node->stream_id_, &streams_, &waitList);
+      }
+    } else {
+      // Assing a stream to the current node
+      node->SetStream(streams_);
+      // Create the execution commands on the assigned stream
+      auto status = node->CreateCommand(node->GetQueue());
+      if (status != hipSuccess) {
+        LogPrintfError("Command creation for node id(%d) failed!", current_id_ + 1);
+        return false;
+      }
+      // Retain all commands, since potentially the command can finish before a wait signal
+      for (auto command : node->GetCommands()) {
+        command->retain();
+      }
 
-//     // Clear the storage of the wait nodes
-//     memset(&wait_order_[0], 0, sizeof(Node) * wait_order_.size());
-//     amd::Command::EventWaitList waitList;
-//     // Walk through dependencies and find the last launches on each parallel stream
-//     for (auto depNode : node->GetDependencies()) {
-//       // Process only the nodes that have been submitted
-//       if (depNode->launch_id_ != -1) {
-//         // If it's the same stream then skip the signal, since it's in order
-//         if (depNode->stream_id_ != node->stream_id_) {
-//           // If there is no wait node on the stream, then assign one
-//           if ((wait_order_[depNode->stream_id_] == nullptr) ||
-//           // If another node executed on the same stream, then use the latest launch only,
-//           // since the same stream has in-order run
-//               (wait_order_[depNode->stream_id_]->launch_id_ < depNode->launch_id_)) {
-//             wait_order_[depNode->stream_id_] = depNode;
-//           }
-//         }
-//       } else {
-//         // It should be a safe return,
-//         // since the last edge to this dependency has to submit the command
-//         return true;
-//       }
-//     }
-//     // Create a wait list from the last launches of all dependencies
-//     for (auto dep : wait_order_) {
-//       if (dep == nullptr) continue;
-//             // Add all commands in the wait list
-//       if (dep->GetType() != hipGraphNodeTypeGraph) {
-//         for (auto command : dep->GetCommands()) {
-//           // XPUT("dep command: %s", command->Xstring().c_str());
-//           waitList.push_back(command);
-//         }
-//         continue;
-//       }
-//     } // for
-//     if (node->GetType() == hipGraphNodeTypeGraph) {
-//       // Process child graph separately, since, there is no connection
-//       auto child = reinterpret_cast<hip::ChildGraphNode*>(node)->GetChildGraph();
-//       if (!reinterpret_cast<hip::ChildGraphNode*>(node)->GetGraphCaptureStatus()) {
-//         child->RunNodes(node->stream_id_, &streams_, &waitList);
-//       }
-//     } else {
-//       // Assing a stream to the current node
-//       node->SetStream(streams_);
-//       // Create the execution commands on the assigned stream
-//       auto status = node->CreateCommand(node->GetQueue());
-//       if (status != hipSuccess) {
-//         LogPrintfError("Command creation for node id(%d) failed!", current_id_ + 1);
-//         return false;
-//       }
-//       // Retain all commands, since potentially the command can finish before a wait signal
-//       for (auto command : node->GetCommands()) {
-//         command->retain();
-//       }
+      // If a wait was requested, then process the list
+      if (wait && !waitList.empty()) {
+        node->UpdateEventWaitLists(waitList);
+      }
+      // Start the execution
+      node->EnqueueCommands(node->GetQueue());
+    }
+    // Assign the launch ID of the submmitted node
+    // This is also applied to childGraphs to prevent them from being reprocessed
+    node->launch_id_ = current_id_++;
+    uint32_t i = 0;
+    // Execute the nodes in the edges list
+    for (auto edge: node->GetEdges()) {
+      // Don't wait in the nodes, executed on the same streams and if it has just one dependency
+      bool wait = ((i < DEBUG_HIP_FORCE_GRAPH_QUEUES) ||
+                   (edge->GetDependencies().size() > 1)) ? true : false;
+      // XPUT("%d: edge: %p wait: %d", i, edge, wait);
+      // Execute the edge node
+      if (!RunOneNode(edge, wait)) {
+        return false;
+      }
+      i++;
+    }
+    if (i == 0) {
+      // Add a leaf node into the list for a wait.
+      // Always use the last node, since it's the latest for the particular queue
+      leafs_[node->stream_id_] = node;
+    }
 
-//       // If a wait was requested, then process the list
-//       if (wait && !waitList.empty()) {
-//         node->UpdateEventWaitLists(waitList);
-//       }
-//       // Start the execution
-//       node->EnqueueCommands(node->GetQueue());
-//     }
-//     // Assign the launch ID of the submmitted node
-//     // This is also applied to childGraphs to prevent them from being reprocessed
-//     node->launch_id_ = current_id_++;
-//     uint32_t i = 0;
-//     // Execute the nodes in the edges list
-//     for (auto edge: node->GetEdges()) {
-//       // Don't wait in the nodes, executed on the same streams and if it has just one dependency
-//       bool wait = ((i < DEBUG_HIP_FORCE_GRAPH_QUEUES) ||
-//                    (edge->GetDependencies().size() > 1)) ? true : false;
-//       // XPUT("%d: edge: %p wait: %d", i, edge, wait);
-//       // Execute the edge node
-//       if (!RunOneNode(edge, wait)) {
-//         return false;
-//       }
-//       i++;
-//     }
-//     if (i == 0) {
-//       // Add a leaf node into the list for a wait.
-//       // Always use the last node, since it's the latest for the particular queue
-//       leafs_[node->stream_id_] = node;
-//     }
-
-//   return true;
-// }
+  return true;
+}
+#endif // USE_RUN_NODE_DFS
 
 // ================================================================================================
 bool Graph::RunNodes(
@@ -747,7 +749,11 @@ bool Graph::RunNodes(
   // Run all commands in the graph
   for (auto node : vertices_) {
     if (node->launch_id_ == -1) {
+#if USE_RUN_NODE_DFS
       if (!RunOneNodeDFS(node, true)) {
+#else
+      if (!RunOneNode(node, true)) {
+#endif
         return false;
       }
     }

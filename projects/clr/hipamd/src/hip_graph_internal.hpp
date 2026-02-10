@@ -1344,12 +1344,12 @@ class GraphKernelNode : public GraphNode {
 
   hipError_t CreateCommand(hip::Stream* stream) override {
 
+#if USE_CLONED_CMDS
     if (Xunlikely(baseCommands_.empty() || stream_ != stream)) {
       if (auto res = CreateCommandInternal(stream); res != hipSuccess) {
         return res;
       }
     }
-#if USE_CLONED_CMDS
     // since our command is cloned => we should not release everything on terminate()
     commands_.resize(baseCommands_.size());
     for (size_t i = 0; i < baseCommands_.size(); i++) {
@@ -1361,6 +1361,9 @@ class GraphKernelNode : public GraphNode {
       }
     }
 #else
+    if (auto res = CreateCommandInternal(stream); res != hipSuccess) {
+      return res;
+    }
     commands_.swap(baseCommands_);
 #endif
     return hipSuccess;

@@ -3413,10 +3413,10 @@ inline void WriteAqlArgAt(unsigned char* dst,  //!< The write pointer to the buf
   bool ok = kernel.name().find("amd_rocclr") == std::string::npos;
 
   bool do_param_update = true;
-  if(vcmd) {
-    // XPUT("%s num usages %d", kernel.name().c_str(), vcmd->getNumUsages());
-    do_param_update = vcmd->getNumUsages() <= 1; // the kernel shall run at least once to skip the update
-  }
+  // if(vcmd) {
+  //   // XPUT("%s num usages %d", kernel.name().c_str(), vcmd->getNumUsages());
+  //   do_param_update = vcmd->getNumUsages() <= 1; // the kernel shall run at least once to skip the update
+  // }
 
   uint64_t spVA = 0;
   // Check if runtime has to setup hidden arguments
