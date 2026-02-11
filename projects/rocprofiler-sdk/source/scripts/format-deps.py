@@ -24,8 +24,12 @@
 
 
 import argparse
+import io
 import os
 import sys
+from pathlib import Path
+
+from ruamel.yaml import YAML
 
 
 class FormatSource(argparse.Action):
@@ -64,6 +68,23 @@ class FormatPython(argparse.Action):
         exit(0)
 
 
+class FormatYAML(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        yaml = YAML()
+        yaml.preserve_quotes = True
+        yaml.width = 120
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        counter_defs = (
+            Path(os.path.dirname(__file__))
+            / "../../source/share/rocprofiler-sdk/counter_defs.yaml"
+        ).resolve()
+        data = yaml.load(counter_defs.read_text())
+        stream = io.StringIO()
+        yaml.dump(data, stream)
+        counter_defs.write_text(stream.getvalue())
+        exit(0)
+
+
 class FormatAll(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
         os.system(
@@ -87,6 +108,7 @@ class FormatAll(argparse.Action):
             + "/../../external/*\" | egrep 'CMakeLists.txt|\.cmake$')"
         )
         os.system("black " + os.path.dirname(__file__) + "/../..")
+        FormatYAML.__call__(FormatYAML, parser, namespace, values, option_string)
         exit(0)
 
 
@@ -118,6 +140,9 @@ parser.add_argument(
     "-p", "--python", nargs=0, help="format python files", action=FormatPython
 )
 parser.add_argument(
-    "-a", "--all", nargs=0, help="format cmake, source and python files", action=FormatAll
+    "-cd", "--counter-defs", nargs=0, help="format counter_defs.yaml", action=FormatYAML
+)
+parser.add_argument(
+    "-a", "--all", nargs=0, help="format cmake, source, python, and yaml files", action=FormatAll
 )
 parser.parse_args()
