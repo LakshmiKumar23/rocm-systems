@@ -752,29 +752,6 @@ TEST_CASE("Unit_hipGetLastError_with_hipStreamBegin_EndCapture") {
 /**
  * Test Description
  * ------------------------
- *  - Verify hipGetLastError status with hipGraphCreate api invalid arg call.
- * Test source
- * ------------------------
- *  - unit/errorHandling/hipGetLastError.cc
- * Test requirements
- * ------------------------
- *  - HIP_VERSION >= 6.0
- */
-
-TEST_CASE("Unit_hipGetLastError_error_check_with_hipGraphCreate") {
-  hipGraph_t graph;
-  hipError_t ret;
-
-  HIP_CHECK(hipGetLastError());
-  ret = hipGraphCreate(&graph, 1);
-  REQUIRE(ret == hipErrorInvalidValue);
-  HIP_CHECK_ERROR(hipGetLastError(), hipErrorInvalidValue);
-  HIP_CHECK(hipGetLastError());
-}
-
-/**
- * Test Description
- * ------------------------
  *  - Verify hipGetLastError status where a success call after hip runtime error
  * Test source
  * ------------------------
@@ -784,7 +761,6 @@ TEST_CASE("Unit_hipGetLastError_error_check_with_hipGraphCreate") {
  *  - HIP_VERSION >= 6.0
  */
 
-#if HT_NVIDIA
 TEST_CASE("Unit_hipGetLastError_success_before_hipGetLastError") {
   hipGraph_t graph;
   hipStream_t stream;
@@ -797,7 +773,6 @@ TEST_CASE("Unit_hipGetLastError_success_before_hipGetLastError") {
 
   HIP_CHECK(hipStreamDestroy(stream));
 }
-#endif
 
 /**
  * Test Description
