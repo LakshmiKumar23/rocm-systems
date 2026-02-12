@@ -529,3 +529,10 @@ hipExtSetLoggingParams
 hipMemSetMemPool
 hipMemGetMemPool
 hipMipmappedArrayGetMemoryRequirements
+hipGreenCtxCreate
+hipGreenCtxDestroy
+hipGreenCtxStreamCreate
+hipStreamGetGreenCtx
+hipGreenCtxRecordEvent
+hipGreenCtxWaitEvent
+hipCtxFromGreenCtx
