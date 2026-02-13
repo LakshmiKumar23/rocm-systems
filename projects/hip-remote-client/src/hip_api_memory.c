@@ -733,3 +733,70 @@ hipError_t hipMemcpyPeerAsync(void* dst, int dstDeviceId, const void* src,
         &resp, sizeof(resp)
     );
 }
+
+/* ============================================================================
+ * Additional Memory Stubs
+ * ============================================================================ */
+
+hipError_t hipMemcpyWithStream(void* dst, const void* src, size_t sizeBytes, int kind, hipStream_t stream) {
+    (void)stream;
+    return hipMemcpy(dst, src, sizeBytes, kind);
+}
+
+hipError_t hipMemcpyToSymbol(const void* symbol, const void* src, size_t count, size_t offset, int kind) {
+    (void)symbol; (void)src; (void)count; (void)offset; (void)kind;
+    hip_remote_log_error("hipMemcpyToSymbol: not implemented in remote mode");
+    return hipErrorNotSupported;
+}
+
+hipError_t hipGetSymbolAddress(void** devPtr, const void* symbol) {
+    (void)devPtr; (void)symbol;
+    hip_remote_log_error("hipGetSymbolAddress: not implemented in remote mode");
+    return hipErrorNotSupported;
+}
+
+hipError_t hipMemPoolGetAttribute(void* memPool, int attr, void* value) {
+    (void)memPool; (void)attr;
+    if (value) memset(value, 0, sizeof(uint64_t));
+    return hipSuccess;
+}
+
+hipError_t hipMemPoolSetAttribute(void* memPool, int attr, void* value) {
+    (void)memPool; (void)attr; (void)value;
+    return hipSuccess;
+}
+
+hipError_t hipMemPoolSetAccess(void* memPool, const void* descList, size_t count) {
+    (void)memPool; (void)descList; (void)count;
+    return hipSuccess;
+}
+
+hipError_t hipMemPoolTrimTo(void* memPool, size_t minBytesToKeep) {
+    (void)memPool; (void)minBytesToKeep;
+    return hipSuccess;
+}
+
+hipError_t hipIpcGetMemHandle(void* handle, void* devPtr) {
+    (void)handle; (void)devPtr;
+    return hipErrorNotSupported;
+}
+
+hipError_t hipIpcOpenMemHandle(void** devPtr, void* handle, unsigned int flags) {
+    (void)devPtr; (void)handle; (void)flags;
+    return hipErrorNotSupported;
+}
+
+hipError_t hipIpcCloseMemHandle(void* devPtr) {
+    (void)devPtr;
+    return hipErrorNotSupported;
+}
+
+hipError_t hipIpcGetEventHandle(void* handle, void* event) {
+    (void)handle; (void)event;
+    return hipErrorNotSupported;
+}
+
+hipError_t hipIpcOpenEventHandle(void** event, void* handle) {
+    (void)event; (void)handle;
+    return hipErrorNotSupported;
+}

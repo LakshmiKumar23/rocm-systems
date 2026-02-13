@@ -22,7 +22,9 @@
 #include "hip_remote/hip_remote_client.h"
 #include "hip_remote/hip_remote_protocol.h"
 
-#include <pthread.h>
+#include "hip_remote/hip_remote_platform.h"
+
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -38,48 +40,59 @@
 
 typedef struct {
     hipFunction_t function;
-    uint32_t num_args;
+    uint32_t kernarg_size;
+    uint32_t num_params;
+    HipRemoteParamDesc params[HIP_REMOTE_MAX_PARAM_DESCS];
 } FunctionInfo;
 
 static FunctionInfo g_function_info[MAX_TRACKED_FUNCTIONS];
 static uint32_t g_function_count = 0;
-static pthread_mutex_t g_function_lock = PTHREAD_MUTEX_INITIALIZER;
+static hip_mutex_t g_function_lock = HIP_MUTEX_INIT;
 
-static void store_function_info(hipFunction_t function, uint32_t num_args) {
-    pthread_mutex_lock(&g_function_lock);
+static void store_function_info_full(hipFunction_t function,
+                                     uint32_t kernarg_size,
+                                     uint32_t num_params,
+                                     const HipRemoteParamDesc* params) {
+    hip_mutex_lock(&g_function_lock);
 
     /* Check if already exists */
     for (uint32_t i = 0; i < g_function_count; i++) {
         if (g_function_info[i].function == function) {
-            g_function_info[i].num_args = num_args;
-            pthread_mutex_unlock(&g_function_lock);
+            g_function_info[i].kernarg_size = kernarg_size;
+            g_function_info[i].num_params = num_params;
+            if (num_params > HIP_REMOTE_MAX_PARAM_DESCS) num_params = HIP_REMOTE_MAX_PARAM_DESCS;
+            memcpy(g_function_info[i].params, params, num_params * sizeof(HipRemoteParamDesc));
+            hip_mutex_unlock(&g_function_lock);
             return;
         }
     }
 
     /* Add new entry */
     if (g_function_count < MAX_TRACKED_FUNCTIONS) {
-        g_function_info[g_function_count].function = function;
-        g_function_info[g_function_count].num_args = num_args;
-        g_function_count++;
+        uint32_t idx = g_function_count++;
+        g_function_info[idx].function = function;
+        g_function_info[idx].kernarg_size = kernarg_size;
+        g_function_info[idx].num_params = num_params;
+        if (num_params > HIP_REMOTE_MAX_PARAM_DESCS) num_params = HIP_REMOTE_MAX_PARAM_DESCS;
+        memcpy(g_function_info[idx].params, params, num_params * sizeof(HipRemoteParamDesc));
     }
 
-    pthread_mutex_unlock(&g_function_lock);
+    hip_mutex_unlock(&g_function_lock);
 }
 
-static uint32_t get_function_num_args(hipFunction_t function) {
-    pthread_mutex_lock(&g_function_lock);
+static const FunctionInfo* get_function_info(hipFunction_t function) {
+    hip_mutex_lock(&g_function_lock);
 
     for (uint32_t i = 0; i < g_function_count; i++) {
         if (g_function_info[i].function == function) {
-            uint32_t num_args = g_function_info[i].num_args;
-            pthread_mutex_unlock(&g_function_lock);
-            return num_args;
+            const FunctionInfo* fi = &g_function_info[i];
+            hip_mutex_unlock(&g_function_lock);
+            return fi;
         }
     }
 
-    pthread_mutex_unlock(&g_function_lock);
-    return 0; /* Unknown function - return 0 args */
+    hip_mutex_unlock(&g_function_lock);
+    return NULL;
 }
 
 /* ============================================================================
@@ -138,15 +151,37 @@ hipError_t hipModuleLoadData(hipModule_t* module, const void* image) {
         }
         approx_size = (size_t)max_end;
     }
+    /* Check for compressed offload bundle (CCOB) */
+    else if (data[0] == 'C' && data[1] == 'C' && data[2] == 'O' && data[3] == 'B') {
+        uint16_t version = *(uint16_t*)(data + 4);
+        if (version >= 3) {
+            /* V3 header: Magic(4) + Version(2) + Method(2) + FileSize(8) + UncompressedSize(8) + Hash(8) */
+            uint64_t file_size = *(uint64_t*)(data + 8);
+            approx_size = (size_t)file_size;
+            hip_remote_log_debug("hipModuleLoadData: CCOB v%u, file_size=%zu", version, approx_size);
+        } else if (version == 2) {
+            /* V2 header: Magic(4) + Version(2) + Method(2) + FileSize(4) + UncompressedSize(4) + Hash(8) */
+            uint32_t file_size = *(uint32_t*)(data + 8);
+            approx_size = (size_t)file_size;
+            hip_remote_log_debug("hipModuleLoadData: CCOB v%u, file_size=%zu", version, approx_size);
+        } else {
+            /* V1: Magic(4) + Version(2) + Method(2) + UncompressedSize(4) + Hash(8) = no total size */
+            approx_size = 16 * 1024 * 1024;
+            hip_remote_log_debug("hipModuleLoadData: CCOB v%u, using default size", version);
+        }
+    }
     else {
-        /* Unknown format - use default max and let worker validate */
-        hip_remote_log_debug("hipModuleLoadData: unknown format, using default size");
+        hip_remote_log_debug("hipModuleLoadData: unknown format magic=0x%02x%02x%02x%02x, using default size",
+                             data[0], data[1], data[2], data[3]);
         approx_size = 16 * 1024 * 1024;
     }
 
     if (approx_size < 64 || approx_size > HIP_REMOTE_MAX_PAYLOAD_SIZE) {
         approx_size = 16 * 1024 * 1024;
     }
+
+    /* No minimum size check — trust the parser for known formats.
+     * Unknown formats already default to 16MB. */
 
     HipRemoteModuleLoadRequest req;
     req.data_size = approx_size;
@@ -196,6 +231,10 @@ hipError_t hipModuleUnload(hipModule_t module) {
 
 hipError_t hipModuleGetFunction(hipFunction_t* function, hipModule_t module,
                                  const char* kname) {
+    hip_remote_log_debug("hipModuleGetFunction ENTRY: func=%p module=%p kname=%p (%s)",
+                         (void*)function, (void*)module, (void*)kname,
+                         kname ? kname : "(null)");
+
     if (!function || !kname) {
         return hipErrorInvalidValue;
     }
@@ -216,10 +255,9 @@ hipError_t hipModuleGetFunction(hipFunction_t* function, hipModule_t module,
 
     if (err == hipSuccess) {
         *function = (hipFunction_t)(uintptr_t)resp.function;
-        /* Store the argument count from the worker for use at launch time */
-        store_function_info(*function, resp.num_args);
-        hip_remote_log_debug("hipModuleGetFunction: function=%p, num_args=%u",
-                             (void*)*function, resp.num_args);
+        store_function_info_full(*function, resp.num_args, resp.num_params, resp.params);
+        hip_remote_log_debug("hipModuleGetFunction: function=%p, kernarg_size=%u, num_params=%u",
+                             (void*)*function, resp.num_args, resp.num_params);
     }
 
     return err;
@@ -244,70 +282,155 @@ hipError_t hipModuleLaunchKernel(hipFunction_t f,
         return hipErrorInvalidHandle;
     }
 
-    /* extra parameter is not supported in remote mode */
+    /* Handle the 'extra' parameter (HIP_LAUNCH_PARAM_BUFFER_*).
+     * Tensile/rocBLAS uses this to pass a flat kernarg buffer. */
+    void* extra_buffer = NULL;
+    size_t extra_buffer_size = 0;
     if (extra && extra[0]) {
-        hip_remote_log_error("hipModuleLaunchKernel: extra parameter not supported");
-        return hipErrorNotSupported;
-    }
-
-    /* Get the number of arguments from stored function info.
-     * This was populated when hipModuleGetFunction was called.
-     * If num_args is 0, it means either:
-     * 1. The kernel truly has 0 args, or
-     * 2. The worker doesn't support hipKernelGetParamInfo (older ROCm)
-     * In case 2, fall back to NULL-terminated counting. */
-    uint32_t num_args = get_function_num_args(f);
-
-    if (num_args == 0 && kernelParams != NULL) {
-        /* Fall back to NULL-terminated counting for compatibility */
-        while (kernelParams[num_args] != NULL && num_args < HIP_REMOTE_MAX_KERNEL_ARGS) {
-            num_args++;
+        for (int ei = 0; extra[ei]; ei++) {
+            if ((uintptr_t)extra[ei] == 0x01) { /* HIP_LAUNCH_PARAM_BUFFER_POINTER */
+                extra_buffer = extra[ei + 1];
+                ei++;
+            } else if ((uintptr_t)extra[ei] == 0x02) { /* HIP_LAUNCH_PARAM_BUFFER_SIZE */
+                extra_buffer_size = *(size_t*)extra[ei + 1];
+                ei++;
+            } else if ((uintptr_t)extra[ei] == 0x03) { /* HIP_LAUNCH_PARAM_END */
+                break;
+            }
         }
-        hip_remote_log_debug("hipModuleLaunchKernel: using NULL-terminated arg count: %u", num_args);
-    } else if (num_args > 0 && kernelParams == NULL) {
-        hip_remote_log_error("hipModuleLaunchKernel: kernel expects %u args but kernelParams is NULL", num_args);
-        return hipErrorInvalidValue;
     }
 
-    /* For simplicity, we assume each argument is a pointer (8 bytes) */
-    /* In a real implementation, we'd need argument metadata from the kernel */
-    /* For now, treat each kernelParams entry as a pointer-sized value */
-    size_t arg_size = sizeof(void*);
-    size_t total_arg_size = num_args * arg_size;
+    /* Get kernel param metadata from stored function info. */
+    const FunctionInfo* fi = get_function_info(f);
+    uint32_t kernarg_size = fi ? fi->kernarg_size : 0;
+    uint32_t num_params = fi ? fi->num_params : 0;
 
-    /* Build the request */
+    /* If we have a flat buffer from 'extra', use it directly */
+    if (extra_buffer && extra_buffer_size > 0) {
+        size_t total_arg_size = extra_buffer_size;
+
+        size_t request_size = sizeof(HipRemoteLaunchKernelRequest) +
+                              sizeof(HipRemoteKernelArg) + total_arg_size;
+
+        uint8_t* buffer = (uint8_t*)malloc(request_size);
+        if (!buffer) return hipErrorOutOfMemory;
+
+        HipRemoteLaunchKernelRequest* req = (HipRemoteLaunchKernelRequest*)buffer;
+        req->function = (uint64_t)(uintptr_t)f;
+        req->grid_dim_x = gridDimX;
+        req->grid_dim_y = gridDimY;
+        req->grid_dim_z = gridDimZ;
+        req->block_dim_x = blockDimX;
+        req->block_dim_y = blockDimY;
+        req->block_dim_z = blockDimZ;
+        req->shared_mem_bytes = sharedMemBytes;
+        req->stream = (uint64_t)(uintptr_t)stream;
+        req->num_args = 1;
+        req->launch_flags = 1; /* flat buffer via extra */
+
+        HipRemoteKernelArg* args = (HipRemoteKernelArg*)(buffer + sizeof(HipRemoteLaunchKernelRequest));
+        args[0].size = (uint32_t)extra_buffer_size;
+        args[0].offset = 0;
+
+        uint8_t* arg_data = (uint8_t*)(args + 1);
+        memcpy(arg_data, extra_buffer, extra_buffer_size);
+
+        HipRemoteResponseHeader resp;
+        memset(&resp, 0, sizeof(resp));
+
+        hipError_t err = hip_remote_request(
+            HIP_OP_LAUNCH_KERNEL,
+            buffer, request_size,
+            &resp, sizeof(resp)
+        );
+
+        free(buffer);
+        return err;
+    }
+
+    /* Build a flat kernarg buffer using the kernel's actual parameter
+     * metadata (offset, size per param) from hipModuleGetFunction.
+     * This matches what the real HIP runtime does in captureAndSet:
+     *   for each param i: memcpy(buf + desc.offset, kernelParams[i], desc.size) */
+    if (num_params == 0 || kernelParams == NULL) {
+        hip_remote_log_debug("hipModuleLaunchKernel: no params (num_params=%u, kp=%p)",
+                             num_params, (void*)kernelParams);
+        if (kernarg_size == 0) {
+            /* Zero-arg kernel — send empty launch */
+            HipRemoteLaunchKernelRequest req_hdr;
+            memset(&req_hdr, 0, sizeof(req_hdr));
+            req_hdr.function = (uint64_t)(uintptr_t)f;
+            req_hdr.grid_dim_x = gridDimX; req_hdr.grid_dim_y = gridDimY; req_hdr.grid_dim_z = gridDimZ;
+            req_hdr.block_dim_x = blockDimX; req_hdr.block_dim_y = blockDimY; req_hdr.block_dim_z = blockDimZ;
+            req_hdr.shared_mem_bytes = sharedMemBytes;
+            req_hdr.stream = (uint64_t)(uintptr_t)stream;
+            req_hdr.num_args = 0;
+            req_hdr.launch_flags = 1;
+
+            HipRemoteResponseHeader resp;
+            memset(&resp, 0, sizeof(resp));
+            return hip_remote_request(HIP_OP_LAUNCH_KERNEL, &req_hdr, sizeof(req_hdr), &resp, sizeof(resp));
+        }
+    }
+
+    size_t total_arg_size = kernarg_size > 0 ? kernarg_size : 256;
+
+    /* Single flat buffer as "extra" — the worker always uses this path */
     size_t request_size = sizeof(HipRemoteLaunchKernelRequest) +
-                          num_args * sizeof(HipRemoteKernelArg) +
-                          total_arg_size;
+                          sizeof(HipRemoteKernelArg) + total_arg_size;
 
     uint8_t* buffer = (uint8_t*)malloc(request_size);
-    if (!buffer) {
-        return hipErrorOutOfMemory;
-    }
+    if (!buffer) return hipErrorOutOfMemory;
 
     HipRemoteLaunchKernelRequest* req = (HipRemoteLaunchKernelRequest*)buffer;
     req->function = (uint64_t)(uintptr_t)f;
-    req->grid_dim_x = gridDimX;
-    req->grid_dim_y = gridDimY;
-    req->grid_dim_z = gridDimZ;
-    req->block_dim_x = blockDimX;
-    req->block_dim_y = blockDimY;
-    req->block_dim_z = blockDimZ;
+    req->grid_dim_x = gridDimX; req->grid_dim_y = gridDimY; req->grid_dim_z = gridDimZ;
+    req->block_dim_x = blockDimX; req->block_dim_y = blockDimY; req->block_dim_z = blockDimZ;
     req->shared_mem_bytes = sharedMemBytes;
     req->stream = (uint64_t)(uintptr_t)stream;
-    req->num_args = num_args;
+    req->num_args = 1;
+    req->launch_flags = 1; /* flat buffer via extra */
 
-    /* Fill in argument descriptors and data */
     HipRemoteKernelArg* args = (HipRemoteKernelArg*)(buffer + sizeof(HipRemoteLaunchKernelRequest));
-    uint8_t* arg_data = (uint8_t*)(args + num_args);
-    uint32_t offset = 0;
+    args[0].offset = 0;
+    args[0].size = (uint32_t)total_arg_size;
 
-    for (uint32_t i = 0; i < num_args; i++) {
-        args[i].size = (uint32_t)arg_size;
-        args[i].offset = offset;
-        memcpy(arg_data + offset, kernelParams[i], arg_size);
-        offset += (uint32_t)arg_size;
+    uint8_t* arg_data = (uint8_t*)(args + 1);
+    memset(arg_data, 0, total_arg_size);
+
+    if (num_params > 0 && fi && kernelParams) {
+        /* Use exact parameter metadata from hipKernelGetParamInfo */
+        for (uint32_t i = 0; i < num_params; i++) {
+            uint32_t off = fi->params[i].offset;
+            uint32_t sz = fi->params[i].size;
+            if (off + sz > total_arg_size) break;
+#ifdef _WIN32
+            __try {
+                memcpy(arg_data + off, kernelParams[i], sz);
+            } __except(1) { break; }
+#else
+            memcpy(arg_data + off, kernelParams[i], sz);
+#endif
+        }
+    } else if (kernelParams) {
+        /* Fallback: no param metadata. Assume 8-byte aligned args.
+         * Copy up to total_arg_size bytes at 8-byte intervals. */
+        uint32_t max_args = (uint32_t)(total_arg_size / 8);
+        for (uint32_t i = 0; i < max_args; i++) {
+#ifdef _WIN32
+            __try {
+                if (kernelParams[i] == NULL) break;
+                memcpy(arg_data + i * 8, kernelParams[i], 8);
+            } __except(1) { break; }
+#else
+            if (kernelParams[i] == NULL) break;
+            memcpy(arg_data + i * 8, kernelParams[i], 8);
+#endif
+        }
     }
+
+    hip_remote_log_debug("hipModuleLaunchKernel: built flat kernarg (%u bytes, %u params)",
+                         (uint32_t)total_arg_size, num_params);
 
     HipRemoteResponseHeader resp;
     memset(&resp, 0, sizeof(resp));
@@ -322,6 +445,22 @@ hipError_t hipModuleLaunchKernel(hipFunction_t f,
     return err;
 }
 
+/*
+ * Fat binary registry lookup - defined in hip_api_fatbin.c.
+ * Returns the remote hipFunction_t for a host function pointer that was
+ * previously registered via __hipRegisterFunction, or NULL if not found.
+ */
+extern hipFunction_t hip_fatbin_lookup_function(const void* hostFunction);
+
+/*
+ * Pop call configuration - defined in hip_api_fatbin.c.
+ * Retrieves the launch configuration pushed by __hipPushCallConfiguration
+ * (generated by the <<<>>> syntax).
+ */
+extern hipError_t __hipPopCallConfiguration(dim3* gridDim, dim3* blockDim,
+                                            size_t* sharedMem,
+                                            hipStream_t* stream);
+
 hipError_t hipLaunchKernel(const void* function_address,
                             dim3 numBlocks,
                             dim3 dimBlocks,
@@ -329,23 +468,34 @@ hipError_t hipLaunchKernel(const void* function_address,
                             size_t sharedMemBytes,
                             hipStream_t stream) {
     /*
-     * hipLaunchKernel with a host function pointer is used when the kernel
-     * is linked into the executable. For remote execution, we need the
-     * module/function approach instead.
-     *
-     * This function cannot work directly in remote mode because the function
-     * pointer is meaningless on the remote worker. Applications should use
-     * hipModuleLaunchKernel instead.
+     * Look up the host function pointer in the fat binary registry.
+     * This translates the local (meaningless) host stub pointer into the
+     * remote hipFunction_t handle that was obtained when
+     * __hipRegisterFunction called hipModuleGetFunction on the worker.
      */
-    hip_remote_log_error("hipLaunchKernel: host function pointers not supported in remote mode");
-    hip_remote_log_error("Use hipModuleLoadData + hipModuleGetFunction + hipModuleLaunchKernel instead");
-    (void)function_address;
-    (void)numBlocks;
-    (void)dimBlocks;
-    (void)args;
-    (void)sharedMemBytes;
-    (void)stream;
-    return hipErrorNotSupported;
+    hipFunction_t func = hip_fatbin_lookup_function(function_address);
+    if (!func) {
+        hip_remote_log_error(
+            "hipLaunchKernel: host function %p not found in fat binary "
+            "registry", function_address);
+        hip_remote_log_error(
+            "Use hipModuleLoadData + hipModuleGetFunction + "
+            "hipModuleLaunchKernel instead");
+        return hipErrorInvalidDeviceFunction;
+    }
+
+    /* The kernel stub already popped the call configuration via
+     * __hipPopCallConfiguration and passes the values as parameters.
+     * Use them directly — do NOT pop again. */
+    return hipModuleLaunchKernel(
+        func,
+        numBlocks.x, numBlocks.y, numBlocks.z,
+        dimBlocks.x, dimBlocks.y, dimBlocks.z,
+        (unsigned int)sharedMemBytes,
+        stream,
+        args,
+        NULL
+    );
 }
 
 /* ============================================================================
@@ -428,4 +578,102 @@ hipError_t hipOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks, hipFunct
         *numBlocks = resp.num_blocks;
     }
     return err;
+}
+
+hipError_t hipExtModuleLaunchKernel(hipFunction_t f,
+                                     unsigned int globalWorkSizeX,
+                                     unsigned int globalWorkSizeY,
+                                     unsigned int globalWorkSizeZ,
+                                     unsigned int localWorkSizeX,
+                                     unsigned int localWorkSizeY,
+                                     unsigned int localWorkSizeZ,
+                                     size_t sharedMemBytes,
+                                     hipStream_t hStream,
+                                     void** kernelParams,
+                                     void** extra,
+                                     hipEvent_t startEvent,
+                                     hipEvent_t stopEvent,
+                                     unsigned int flags) {
+    (void)startEvent; (void)stopEvent; (void)flags;
+    hip_remote_log_debug("hipExtModuleLaunchKernel: f=%p grid=(%u,%u,%u) block=(%u,%u,%u) "
+                         "shared=%zu stream=%p kp=%p extra=%p",
+                         (void*)f, globalWorkSizeX, globalWorkSizeY, globalWorkSizeZ,
+                         localWorkSizeX, localWorkSizeY, localWorkSizeZ,
+                         sharedMemBytes, (void*)hStream, (void*)kernelParams, (void*)extra);
+    hipError_t err = hipModuleLaunchKernel(f,
+        globalWorkSizeX, globalWorkSizeY, globalWorkSizeZ,
+        localWorkSizeX, localWorkSizeY, localWorkSizeZ,
+        (unsigned int)sharedMemBytes, hStream, kernelParams, extra);
+    hip_remote_log_debug("hipExtModuleLaunchKernel: err=%d", err);
+    return err;
+}
+
+hipError_t hipModuleLoad(hipModule_t* module, const char* fname) {
+    if (!module || !fname) return hipErrorInvalidValue;
+
+    /* Read the file locally and send directly with the KNOWN file size.
+     * Don't go through hipModuleLoadData's size guessing — it can get
+     * the size wrong for offload bundles. */
+    FILE* f = fopen(fname, "rb");
+    if (!f) {
+        hip_remote_log_error("hipModuleLoad: cannot open '%s'", fname);
+        return hipErrorFileNotFound;
+    }
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len <= 0) {
+        fclose(f);
+        return hipErrorInvalidImage;
+    }
+    void* buf = malloc((size_t)len);
+    if (!buf) { fclose(f); return hipErrorOutOfMemory; }
+    fread(buf, 1, (size_t)len, f);
+    fclose(f);
+
+    /* Send with the exact file size */
+    HipRemoteModuleLoadRequest req;
+    req.data_size = (uint64_t)len;
+
+    HipRemoteModuleLoadResponse resp;
+    memset(&resp, 0, sizeof(resp));
+
+    hipError_t err = hip_remote_request_with_data(
+        HIP_OP_MODULE_LOAD_DATA,
+        &req, sizeof(req),
+        buf, (size_t)len,
+        &resp, sizeof(resp)
+    );
+
+    free(buf);
+
+    if (err == hipSuccess) {
+        *module = (hipModule_t)(uintptr_t)resp.module;
+    } else {
+        hip_remote_log_error("hipModuleLoad failed: %s\n error: %s", fname, hipGetErrorString(err));
+    }
+    return err;
+}
+
+hipError_t hipModuleLaunchCooperativeKernel(hipFunction_t f,
+                                             unsigned int gridDimX,
+                                             unsigned int gridDimY,
+                                             unsigned int gridDimZ,
+                                             unsigned int blockDimX,
+                                             unsigned int blockDimY,
+                                             unsigned int blockDimZ,
+                                             unsigned int sharedMemBytes,
+                                             hipStream_t stream,
+                                             void** kernelParams) {
+    return hipModuleLaunchKernel(f, gridDimX, gridDimY, gridDimZ,
+                                blockDimX, blockDimY, blockDimZ,
+                                sharedMemBytes, stream, kernelParams, NULL);
+}
+
+hipError_t hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(int* numBlocks,
+                                                               hipFunction_t f,
+                                                               int blockSize,
+                                                               size_t dynSharedMemPerBlk) {
+    return hipOccupancyMaxActiveBlocksPerMultiprocessor(numBlocks, (const void*)f,
+                                                        blockSize, dynSharedMemPerBlk);
 }
