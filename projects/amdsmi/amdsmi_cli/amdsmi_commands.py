@@ -8692,7 +8692,15 @@ class AMDSMICommands():
         if args.afid:
             if args.cper_file:
                 afids = self.helpers.pvtDumpAfids(args.cper_file)
-                print(' '.join(map(str, afids)))
+                if self.logger.is_json_format():
+                    afid_output = {
+                        "cper_file": str(args.cper_file),
+                        "afids": afids
+                    }
+                    self.logger.output = afid_output
+                    self.logger.print_output()
+                else:
+                    print(' '.join(map(str, afids)))
                 return
             else:
                 command = " ".join(sys.argv[1:])
