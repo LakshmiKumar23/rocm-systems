@@ -2118,7 +2118,7 @@ void VirtualGPU::submitBatchCopyMemory(amd::BatchCopyMemoryCommand& cmd) {
 
   profilingBegin(cmd);
 
-  const auto& copyOps = cmd.copyOps();
+  auto& copyOps = cmd.copyOps();
   if (copyOps.empty()) {
     profilingEnd(cmd);
     return;
@@ -2128,7 +2128,7 @@ void VirtualGPU::submitBatchCopyMemory(amd::BatchCopyMemoryCommand& cmd) {
   device::Memory::SyncFlags syncFlags;
   syncFlags.skipEntire_ = false;
 
-  for (const auto& op : copyOps) {
+  for (auto& op : copyOps) {
     Memory* srcDevMem = dev().getGpuMemory(op.srcMemory);
     Memory* dstDevMem = dev().getGpuMemory(op.dstMemory);
 
