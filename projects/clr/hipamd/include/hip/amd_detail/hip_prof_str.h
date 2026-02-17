@@ -474,7 +474,8 @@ enum hip_api_id_t {
   HIP_API_ID_hipMemSetMemPool = 454,
   HIP_API_ID_hipMemGetMemPool = 455,
   HIP_API_ID_hipMipmappedArrayGetMemoryRequirements = 456,
-  HIP_API_ID_LAST = 456,
+  HIP_API_ID_hipDeviceGetCuid = 457,
+  HIP_API_ID_LAST = 457,
 
   HIP_API_ID_hipChooseDevice = HIP_API_ID_CONCAT(HIP_API_ID_,hipChooseDevice),
   HIP_API_ID_hipGetDeviceProperties = HIP_API_ID_CONCAT(HIP_API_ID_,hipGetDeviceProperties),
@@ -561,6 +562,7 @@ static inline const char* hip_api_name(const uint32_t id) {
     case HIP_API_ID_hipDeviceGetSharedMemConfig: return "hipDeviceGetSharedMemConfig";
     case HIP_API_ID_hipDeviceGetStreamPriorityRange: return "hipDeviceGetStreamPriorityRange";
     case HIP_API_ID_hipDeviceGetUuid: return "hipDeviceGetUuid";
+    case HIP_API_ID_hipDeviceGetCuid: return "hipDeviceGetCuid";
     case HIP_API_ID_hipDeviceGraphMemTrim: return "hipDeviceGraphMemTrim";
     case HIP_API_ID_hipDevicePrimaryCtxGetState: return "hipDevicePrimaryCtxGetState";
     case HIP_API_ID_hipDevicePrimaryCtxRelease: return "hipDevicePrimaryCtxRelease";
@@ -1011,6 +1013,7 @@ static inline uint32_t hipApiIdByName(const char* name) {
   if (strcmp("hipDeviceGetSharedMemConfig", name) == 0) return HIP_API_ID_hipDeviceGetSharedMemConfig;
   if (strcmp("hipDeviceGetStreamPriorityRange", name) == 0) return HIP_API_ID_hipDeviceGetStreamPriorityRange;
   if (strcmp("hipDeviceGetUuid", name) == 0) return HIP_API_ID_hipDeviceGetUuid;
+  if (strcmp("hipDeviceGetCuid", name) == 0) return HIP_API_ID_hipDeviceGetCuid;
   if (strcmp("hipDeviceGraphMemTrim", name) == 0) return HIP_API_ID_hipDeviceGraphMemTrim;
   if (strcmp("hipDevicePrimaryCtxGetState", name) == 0) return HIP_API_ID_hipDevicePrimaryCtxGetState;
   if (strcmp("hipDevicePrimaryCtxRelease", name) == 0) return HIP_API_ID_hipDevicePrimaryCtxRelease;
@@ -1648,6 +1651,11 @@ typedef struct hip_api_data_s {
       hipUUID uuid__val;
       hipDevice_t device;
     } hipDeviceGetUuid;
+    struct {
+      hipUUID* cuid;
+      hipUUID cuid__val;
+      hipDevice_t device;
+    } hipDeviceGetCuid;
     struct {
       int device;
     } hipDeviceGraphMemTrim;
@@ -4343,6 +4351,11 @@ typedef struct hip_api_data_s {
 #define INIT_hipDeviceGetUuid_CB_ARGS_DATA(cb_data) { \
   cb_data.args.hipDeviceGetUuid.uuid = (hipUUID*)uuid; \
   cb_data.args.hipDeviceGetUuid.device = (hipDevice_t)device; \
+};
+// hipDeviceGetCuid[('hipUUID*', 'cuid'), ('hipDevice_t', 'device')]
+#define INIT_hipDeviceGetCuid_CB_ARGS_DATA(cb_data) { \
+  cb_data.args.hipDeviceGetCuid.cuid = (hipUUID*)cuid; \
+  cb_data.args.hipDeviceGetCuid.device = (hipDevice_t)device; \
 };
 // hipDeviceGraphMemTrim[('int', 'device')]
 #define INIT_hipDeviceGraphMemTrim_CB_ARGS_DATA(cb_data) { \
@@ -7064,6 +7077,10 @@ static inline void hipApiArgsInit(hip_api_id_t id, hip_api_data_t* data) {
     case HIP_API_ID_hipDeviceGetUuid:
       if (data->args.hipDeviceGetUuid.uuid) data->args.hipDeviceGetUuid.uuid__val = *(data->args.hipDeviceGetUuid.uuid);
       break;
+// hipDeviceGetCuid[('hipUUID*', 'cuid'), ('hipDevice_t', 'device')]
+    case HIP_API_ID_hipDeviceGetCuid:
+      if (data->args.hipDeviceGetCuid.cuid) data->args.hipDeviceGetCuid.cuid__val = *(data->args.hipDeviceGetCuid.cuid);
+      break;
 // hipDeviceGraphMemTrim[('int', 'device')]
     case HIP_API_ID_hipDeviceGraphMemTrim:
       break;
@@ -8971,6 +8988,13 @@ static inline const char* hipApiString(hip_api_id_t id, const hip_api_data_t* da
       if (data->args.hipDeviceGetUuid.uuid == NULL) oss << "uuid=NULL";
       else { oss << "uuid="; roctracer::hip_support::detail::operator<<(oss, data->args.hipDeviceGetUuid.uuid__val); }
       oss << ", device="; roctracer::hip_support::detail::operator<<(oss, data->args.hipDeviceGetUuid.device);
+      oss << ")";
+    break;
+    case HIP_API_ID_hipDeviceGetCuid:
+      oss << "hipDeviceGetCuid(";
+      if (data->args.hipDeviceGetCuid.cuid == NULL) oss << "cuid=NULL";
+      else { oss << "cuid="; roctracer::hip_support::detail::operator<<(oss, data->args.hipDeviceGetCuid.cuid__val); }
+      oss << ", device="; roctracer::hip_support::detail::operator<<(oss, data->args.hipDeviceGetCuid.device);
       oss << ")";
     break;
     case HIP_API_ID_hipDeviceGraphMemTrim:

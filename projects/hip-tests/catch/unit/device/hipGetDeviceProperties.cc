@@ -365,6 +365,7 @@ TEST_CASE("Print_Out_Properties_6.0") {
   std::cout << std::setw(w) << "New Attributes added in Rocm 6.0" << "\n";
 #if HT_AMD
   std::cout << std::setw(w) << "uuid: " << properties.uuid.bytes << "\n";
+  std::cout << std::setw(w) << "uuid: " << properties.cuid.bytes << "\n";
 #endif
   std::cout << std::setw(w) << "maxTexture1DLayered.width: " << properties.maxTexture1DLayered[0]
             << "\n";

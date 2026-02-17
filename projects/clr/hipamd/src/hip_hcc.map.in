@@ -651,6 +651,7 @@ global:
     hipMemSetMemPool;
     hipMemGetMemPool;
     hipMipmappedArrayGetMemoryRequirements;
+    hipDeviceGetCuid;
 local:
     *;
 } hip_7.1;
