@@ -398,7 +398,7 @@ rocprofiler_add_integration_execute_test(
     ENVIRONMENT "${rocprofv3-rocpd-env}"
     FAIL_REGULAR_EXPRESSION "${ROCPROFILER_DEFAULT_FAIL_REGEX}")
 
-# Test analyze on existing database (removed fixture dependency)
+# Test analyze on existing database
 rocprofiler_add_integration_execute_test(
     rocprofv3-test-rocpd-analyze
     COMMAND
@@ -408,9 +408,10 @@ rocprofiler_add_integration_execute_test(
     TIMEOUT 120
     LABELS "integration-tests;rocpd"
     ENVIRONMENT "${rocprofv3-rocpd-env}"
-    FAIL_REGULAR_EXPRESSION "${ROCPROFILER_DEFAULT_FAIL_REGEX}")
+    FAIL_REGULAR_EXPRESSION "${ROCPROFILER_DEFAULT_FAIL_REGEX}"
+    FIXTURES_REQUIRED rocprofv3-test-rocpd)
 
-# Test analyze with JSON output format (removed fixture dependency)
+# Test analyze with JSON output format
 rocprofiler_add_integration_execute_test(
     rocprofv3-test-rocpd-analyze-json
     COMMAND
@@ -421,9 +422,10 @@ rocprofiler_add_integration_execute_test(
     TIMEOUT 120
     LABELS "integration-tests;rocpd"
     ENVIRONMENT "${rocprofv3-rocpd-env}"
-    FAIL_REGULAR_EXPRESSION "${ROCPROFILER_DEFAULT_FAIL_REGEX}")
+    FAIL_REGULAR_EXPRESSION "${ROCPROFILER_DEFAULT_FAIL_REGEX}"
+    FIXTURES_REQUIRED rocprofv3-test-rocpd)
 
-# Test analyze with custom top-kernels (removed fixture dependency)
+# Test analyze with custom top-kernels
 rocprofiler_add_integration_execute_test(
     rocprofv3-test-rocpd-analyze-top-kernels
     COMMAND
@@ -433,9 +435,10 @@ rocprofiler_add_integration_execute_test(
     TIMEOUT 120
     LABELS "integration-tests;rocpd"
     ENVIRONMENT "${rocprofv3-rocpd-env}"
-    FAIL_REGULAR_EXPRESSION "${ROCPROFILER_DEFAULT_FAIL_REGEX}")
+    FAIL_REGULAR_EXPRESSION "${ROCPROFILER_DEFAULT_FAIL_REGEX}"
+    FIXTURES_REQUIRED rocprofv3-test-rocpd)
 
-# Test analyze with custom prompt (no LLM, just metadata) (removed fixture dependency)
+# Test analyze with custom prompt (no LLM, just metadata)
 rocprofiler_add_integration_execute_test(
     rocprofv3-test-rocpd-analyze-custom-prompt
     COMMAND
@@ -446,7 +449,8 @@ rocprofiler_add_integration_execute_test(
     TIMEOUT 120
     LABELS "integration-tests;rocpd"
     ENVIRONMENT "${rocprofv3-rocpd-env}"
-    FAIL_REGULAR_EXPRESSION "${ROCPROFILER_DEFAULT_FAIL_REGEX}")
+    FAIL_REGULAR_EXPRESSION "${ROCPROFILER_DEFAULT_FAIL_REGEX}"
+    FIXTURES_REQUIRED rocprofv3-test-rocpd)
 
 # Test analyze on multiproc database
 rocprofiler_add_integration_execute_test(
