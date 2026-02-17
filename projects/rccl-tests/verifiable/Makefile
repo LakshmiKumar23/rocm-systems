@@ -27,7 +27,7 @@ LDFLAGS    :=
 HIPLDFLAGS :=
 
 # Clang compiler fails to auto detect device lib path in some ROCK builds
-DEVICE_LIB_PATH := $(if $(wildcard $(ROCM_PATH)/amdgcn/bitcode),,--rocm-device-lib-path=$(ROCM_PATH)/llvm/amdgcn/bitcode)
+DEVICE_LIB_PATH := $(if $(wildcard $(ROCM_PATH)/amdgcn/bitcode),,$(if $(wildcard $(ROCM_PATH)/llvm/amdgcn/bitcode),--rocm-device-lib-path=$(ROCM_PATH)/llvm/amdgcn/bitcode))
 
 ifneq ($(NCCL_HOME), "")
 HIPCUFLAGS += -I$(NCCL_HOME)/ -I$(NCCL_HOME)/include
