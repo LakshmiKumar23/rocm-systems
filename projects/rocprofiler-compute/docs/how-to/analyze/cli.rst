@@ -653,13 +653,17 @@ see :ref:`torch-operator-profiling` for naming details.
 Filtering by Operator
 ^^^^^^^^^^^^^^^^^^^^^^
 
-``--torch-operator`` supports exactly two forms of selection:
+``--torch-operator`` supports three forms of selection:
 
 * **Full hierarchy** — the complete operator path as listed (e.g.
   ``nn.Module.Net.forward/nn.Module.Conv2d.forward/torch.nn.functional.conv2d``)
-* **Last segment only** — the final component of the name (e.g. ``conv2d``)
+* **Last segment only** — the final component of the name or a suffix of it
+  (e.g. ``conv2d`` matches operators whose last path segment ends with ``conv2d``)
+* **Regex** — prefix the pattern with ``re:``; the rest is a regex matched against
+  the full operator path (e.g. ``re:.*conv.*`` to match any operator whose path
+  contains ``conv``)
 
-Selection at intermediate levels is not supported yet.
+Metrics are filtered to kernel(s) launched by the selected operator(s).
 
 .. code-block:: shell-session
 
@@ -669,7 +673,10 @@ Selection at intermediate levels is not supported yet.
    # Last segment only (matches any operator whose name ends with that segment)
    $ rocprof-compute analyze --path ./workload --experimental --torch-operator conv2d
 
-**Filter multiple operators** (each argument is full path or last segment):
+   # Regex (match any operator path containing "conv")
+   $ rocprof-compute analyze --path ./workload --experimental --torch-operator "re:.*conv.*"
+
+**Filter multiple operators** (each argument is full path, last segment, or ``re:<regex>``):
 
 .. code-block:: shell-session
 

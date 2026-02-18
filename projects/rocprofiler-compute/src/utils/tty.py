@@ -456,14 +456,13 @@ def show_torch_operator_hierarchy(
         kernel_duration_ns: dict[str, float] = {}
         kernel_context: dict[str, dict[str, dict[str, int]]] = {}
         for _, row in op_data.iterrows():
-            full_kernel_name = row["Kernel_Name"]
-            kernel_name = extract_kernel_name(full_kernel_name)
+            kernel_name = str(row["Kernel_Name"]).strip()
 
             if kernel_name not in kernel_counts:
                 kernel_counts[kernel_name] = 0
                 kernel_duration_ns[kernel_name] = 0.0
                 kernel_context[kernel_name] = {
-                    "full_name": full_kernel_name,
+                    "full_name": kernel_name,
                     "contexts": {},
                 }
             kernel_counts[kernel_name] += 1

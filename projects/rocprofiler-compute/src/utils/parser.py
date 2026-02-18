@@ -2045,6 +2045,103 @@ def load_torch_trace_data(workload: schema.Workload, dir_path: str) -> None:
                 console_warning(f"Could not load {csv_file}: {e}")
 
 
+def _torch_operator_pattern_matches(pattern: str, operator_name: str) -> bool:
+    """
+    Return True if pattern matches operator_name (full hierarchy string).
+
+    Supports:
+    - Exact match: pattern equals operator_name.
+    - Last-segment match: pattern equals the last path component, or the last
+      component ends with pattern (e.g. "conv2d" matches ".../torch.nn.functional.conv2d").
+    - Regex: if pattern starts with "re:", the remainder is compiled as a regex
+      and matched against operator_name (search).
+    """
+    if not pattern or not operator_name:
+        return False
+    # Explicit regex prefix
+    if pattern.startswith("re:"):
+        try:
+            rx = re.compile(pattern[3:].strip())
+            return bool(rx.search(operator_name))
+        except re.error:
+            return False
+    # Exact full hierarchy match
+    if pattern == operator_name:
+        return True
+    # Last-segment match: last path component equals pattern or ends with it
+    last_segment = operator_name.split("/")[-1]
+    if last_segment == pattern or last_segment.endswith("." + pattern):
+        return True
+    # Optional: treat pattern as regex if it contains regex metacharacters
+    try:
+        rx = re.compile(pattern)
+        if rx.search(operator_name):
+            return True
+    except re.error:
+        return False
+
+
+def get_kernel_names_for_torch_operator_patterns(
+    torch_operators: dict[str, pd.DataFrame],
+    pattern_list: list[str],
+) -> list[str]:
+    """
+    Resolve --torch-operator pattern(s) to a list of kernel names.
+
+    Each pattern can be:
+    - Full hierarchy (exact match of Operator_Name).
+    - Last segment (final path component or suffix, e.g. "conv2d").
+    - Regex: prefix "re:" then a regex matched against Operator_Name (search).
+
+    Returns sorted list of unique Kernel_Name values from matching operator rows.
+    """
+    if not torch_operators or not pattern_list:
+        return []
+    kernel_names: set[str] = set()
+    for _op_key, df in torch_operators.items():
+        if df is None or df.empty or "Operator_Name" not in df.columns:
+            continue
+        if "Kernel_Name" not in df.columns:
+            continue
+        for op_name in df["Operator_Name"].dropna().unique():
+            op_str = str(op_name).strip()
+            for pattern in pattern_list:
+                if _torch_operator_pattern_matches(pattern.strip(), op_str):
+                    names = df.loc[df["Operator_Name"] == op_name, "Kernel_Name"]
+                    kernel_names.update(str(n).strip() for n in names if pd.notna(n))
+                    break
+    return sorted(kernel_names)
+
+
+def get_matched_torch_operators_for_display(
+    torch_operators: dict[str, pd.DataFrame],
+    pattern_list: list[str],
+) -> list[tuple[str, pd.DataFrame]]:
+    """
+    Return (operator_name, filtered_df) for each operator matching any pattern.
+
+    Used to display operator tables when --torch-operator is used. Same pattern
+    rules as get_kernel_names_for_torch_operator_patterns.
+    """
+    if not torch_operators or not pattern_list:
+        return []
+    result: list[tuple[str, pd.DataFrame]] = []
+    seen: set[str] = set()
+    for _op_key, df in torch_operators.items():
+        if df is None or df.empty or "Operator_Name" not in df.columns:
+            continue
+        for op_name in df["Operator_Name"].dropna().unique():
+            op_str = str(op_name).strip()
+            if op_str in seen:
+                continue
+            for pattern in pattern_list:
+                if _torch_operator_pattern_matches(pattern.strip(), op_str):
+                    seen.add(op_str)
+                    result.append((op_str, df.loc[df["Operator_Name"] == op_name]))
+                    break
+    return result
+
+
 @demarcate
 def load_table_data(
     workload: schema.Workload,

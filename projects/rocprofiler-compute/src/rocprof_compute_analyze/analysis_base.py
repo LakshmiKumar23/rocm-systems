@@ -39,6 +39,7 @@ import pandas as pd
 import config
 from rocprof_compute_soc.soc_base import OmniSoC_Base
 from utils import file_io, parser, schema, tty
+from utils.kernel_name_shortener import kernel_name_shortener
 from utils.logger import (
     console_debug,
     console_error,
@@ -218,9 +219,14 @@ class OmniAnalyze_Base:
         print(f"PyTorch Operators in: {workload_path}")
         print(f"{'=' * 80}\n")
         operator_count = 0
+        kernel_verbose = getattr(self.__args, "kernel_verbose", 5)
         for idx, f in enumerate(all_files, start=1):
             try:
                 df = pd.read_csv(f)
+                if "Kernel_Name" in df.columns:
+                    shortened = kernel_name_shortener(df, kernel_verbose)
+                    if shortened is not None:
+                        df = shortened
                 tty.show_torch_operator_hierarchy(
                     str(f.name).replace(".csv", ""), df, index=idx
                 )
