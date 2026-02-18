@@ -576,7 +576,7 @@ For attachment profiling of running processes:
     add_parser_bool_argument(
         filter_options,
         "--selected-regions",
-        help="If set, rocprofv3 will only profile regions of code surrounded by roctxProfilerResume(0) and roctxProfilerPause(0)",
+        help="If set, rocprofv3 will only profile regions of code surrounded by roctxProfilerResume(0) and roctxProfilerPause(0). Needs to be combined with `--marker-trace` option",
     )
 
     perfetto_options = parser.add_argument_group("Perfetto-specific options")
