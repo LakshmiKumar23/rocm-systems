@@ -300,6 +300,7 @@ void genRandomMasks(LinearAllocGuard<T>& d_buf,
 {
   // masks must be != 0, hence passing 1 as the 'a' distribution parameter
   std::uniform_int_distribution<unsigned long long> dist(1);
+  std::uniform_int_distribution<unsigned long long> distNoHoles(1, getWarpSize() - 2);
   int numBytes = numItems * sizeof(T);
   LinearAllocGuard<T> tmp(LinearAllocs::malloc, numBytes);
   LinearAllocGuard<T> d_tmp(LinearAllocs::hipMalloc, numBytes);
@@ -308,10 +309,19 @@ void genRandomMasks(LinearAllocGuard<T>& d_buf,
   d_buf = std::move(d_tmp);
 
   for (int i = 0; i < numItems; i++) {
-    T mask = dist(gen);
+    T mask;
 
-    if (getWarpSize() == 32)
-      mask &= 0xFFFFFFFF;
+    if (i % 5 == 0) {
+      // every five masks, create a mask that starts in position zero and has "no holes",
+      // because those take a different code path, where DPP instructions are used
+      mask = 1 << distNoHoles(gen);
+      mask--;
+    } else {
+      mask = dist(gen);
+
+      if (getWarpSize() == 32)
+        mask &= 0xFFFFFFFF;
+    }
 
     buf.ptr()[i] = mask;
   }
@@ -351,10 +361,11 @@ void genRandomBuffers(LinearAllocGuard<T>& d_buf,
   d_buf = std::move(d_tmp);
 
   for (int i = 0; i < numItems; i++)
-    if constexpr (std::is_same<T, __half>::value)
+    if constexpr (std::is_same<T, __half>::value) {
       buf.ptr()[i] = genRandomHalf(dist, gen);
-    else
+    } else {
       buf.ptr()[i] = dist(gen);
+    }
 
   HIP_CHECK(hipMemcpy(d_buf.ptr(), buf.ptr(), numBytes, hipMemcpyHostToDevice));
 }
@@ -490,8 +501,10 @@ void runTestReduce(int iteration, Reduce reduce)
   // for float16, we generate any random unsigned short, but cap the exponent later on
   // to keep it in the range (-8.0..8.0) (just to avoid overflows)
   // On the rest of the types, just use a bigger reduced range of numbers to avoid overflows too
-  T a = std::is_same<T, half>::value? std::numeric_limits<unsigned short>::lowest() : -1023;
-  T b = std::is_same<T, half>::value? std::numeric_limits<unsigned short>::max() : 1023;
+  T a = std::is_same<T, half>::value? std::numeric_limits<unsigned short>::lowest() :
+                                      (std::is_signed<T>::value? -1023 : 0);
+  T b = std::is_same<T, half>::value? std::numeric_limits<unsigned short>::max() :
+                                      1023;
   distribution dist(a, b);
   LinearAllocGuard<T> input, d_input;
   LinearAllocGuard<unsigned long long> masks, d_masks;
