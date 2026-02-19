@@ -622,8 +622,7 @@ PyTorch Operator Analysis
    will provide different interfaces for operator selection and visualization.
 
 After profiling with ``--torch-trace`` (see :ref:`torch-operator-profiling`), use
-the analyze CLI to list and filter captured operators. These options require
-``--experimental``.
+the analyze CLI to list and filter captured operators.
 
 Listing All Operators
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -632,7 +631,7 @@ Display all PyTorch operators captured during profiling:
 
 .. code-block:: shell-session
 
-   $ rocprof-compute analyze --path ./workload --experimental --list-torch-operators
+   $ rocprof-compute analyze --path ./workload --list-torch-operators
 
    ================================================================================
    PyTorch Operators in: ./workload
@@ -664,14 +663,14 @@ Selection at intermediate levels is not supported yet.
 .. code-block:: shell-session
 
    # Full hierarchy
-   $ rocprof-compute analyze --path ./workload --experimental --torch-operator "nn.Module.Net.forward/nn.Module.Conv2d.forward/torch.nn.functional.conv2d"
+   $ rocprof-compute analyze --path ./workload --torch-operator "nn.Module.Net.forward/nn.Module.Conv2d.forward/torch.nn.functional.conv2d"
 
    # Last segment only (matches any operator whose name ends with that segment)
-   $ rocprof-compute analyze --path ./workload --experimental --torch-operator conv2d
+   $ rocprof-compute analyze --path ./workload --torch-operator conv2d
 
 **Filter multiple operators** (each argument is full path or last segment):
 
 .. code-block:: shell-session
 
-   $ rocprof-compute analyze --path ./workload --experimental \
+   $ rocprof-compute analyze --path ./workload \
        --torch-operator "nn.Module.Net.forward/nn.Module.Conv2d.forward/torch.nn.functional.conv2d" "relu"

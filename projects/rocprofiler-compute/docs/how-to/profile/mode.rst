@@ -806,7 +806,6 @@ which operators contribute to specific performance counter values.
 Requirements
 ------------
 
-* ``--experimental`` flag (torch-trace is an experimental feature)
 * Valid PyTorch installation in the profiling environment
 * PyTorch application must be run as a Python script or Python command
 * Workload's Python version must match the Python version ROCm installs roctx for
@@ -814,12 +813,12 @@ Requirements
 Usage
 -----
 
-To enable Torch operator mapping, use ``--experimental`` and ``--torch-trace`` when
+To enable Torch operator mapping, use ``--torch-trace`` when
 profiling a PyTorch workload:
 
 .. code-block:: shell-session
 
-   $ rocprof-compute profile --name mnist_torch --experimental --torch-trace -- python train.py
+   $ rocprof-compute profile --name mnist_torch --torch-trace -- python train.py
 
                                     __                                       _
     _ __ ___   ___ _ __  _ __ ___  / _|       ___ ___  _ __ ___  _ __  _   _| |_ ___
@@ -991,8 +990,7 @@ Example with hierarchical naming:
 (``--torch-operator``) accepts either the full hierarchical name (e.g.
 ``nn.Module.Net.forward/nn.Module.Conv2d.forward/torch.nn.functional.conv2d``)
 or the last segment only (e.g. ``conv2d``). Selection
-at intermediate levels is not supported yet. Use
-``--experimental`` when using ``--list-torch-operators`` or ``--torch-operator``.
+at intermediate levels is not supported yet.
 
 Combined with Other Options
 ----------------------------
@@ -1002,13 +1000,13 @@ Torch operator mapping can be combined with other profiling options:
 .. code-block:: shell-session
 
    # Combine with block filtering for targeted counter collection
-   $ rocprof-compute profile --name mnist --experimental --torch-trace -b 11 12 -- python train.py
+   $ rocprof-compute profile --name mnist --torch-trace -b 11 12 -- python train.py
 
    # Combine with iteration multiplexing
-   $ rocprof-compute profile --name mnist --experimental --torch-trace --iteration-multiplexing kernel -- python train.py
+   $ rocprof-compute profile --name mnist --torch-trace --iteration-multiplexing kernel -- python train.py
 
    # Combine with kernel filtering (filters by GPU kernel name)
-   $ rocprof-compute profile --name mnist --experimental --torch-trace -k elementwise -- python train.py
+   $ rocprof-compute profile --name mnist --torch-trace -k elementwise -- python train.py
 
 .. _iteration-multiplexing:
 
