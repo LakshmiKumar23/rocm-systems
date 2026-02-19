@@ -846,11 +846,13 @@ profiling a PyTorch workload:
 Output
 ------
 
-When Torch operator mapping is enabled, profiling generates additional output in
-the workload directory: ``marker_api_trace`` and ``counter_collection`` CSV files
-are saved there (or under workload subdirectories depending on output format).
-Correlation of operators with GPU kernels and consolidation into per-operator
-CSVs under ``torch_trace/`` is done after profiling (e.g. when running analyze).
+When Torch operator mapping is enabled, profiling writes additional CSV files in
+the workload directory: **marker_api_trace** and **counter_collection** files with
+the ``torch_trace`` prefix. These correlate PyTorch operators
+with GPU kernels and performance counters. When you run analyze (e.g. with
+``--list-torch-operators``), it builds per-operator CSVs under ``torch_trace/``;
+the source marker and counter files are **retained** in the workload directory and
+are not deleted.
 
 ``torch_trace/`` directory
    Per-operator CSV files. Each file is named from the **last component** of the
@@ -869,21 +871,51 @@ CSVs under ``torch_trace/`` is done after profiling (e.g. when running analyze).
 
    This per-operator layout enables focused analysis without processing the full trace.
 
-.. table:: torch_trace/ones_like.csv from profiling mnist model.
-   :widths: 20 80
+Sample rows from ``torch_trace/ones_like.csv`` (from profiling an mnist model):
 
-| Operator_Name   | Context_Id        | Kernel_Name                                                                                                                                                             | Counter_Name                   |   Counter_Value |   Start_Timestamp_function |   End_Timestamp_function |   Start_Timestamp_kernel |   End_Timestamp_kernel |
-|:----------------|:------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-------------------------------|----------------:|---------------------------:|-------------------------:|-------------------------:|-----------------------:|
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_CPC_STAT_BUSY              |           23004 |           6789210204040073 |         6789210223815845 |         6789210223810274 |       6789210223811914 |
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_CPC_STAT_IDLE              |               0 |           6789210204040073 |         6789210223815845 |         6789210223810274 |       6789210223811914 |
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_CPC_STAT_STALL             |            6715 |           6789281060081123 |         6789281079930585 |         6789281079932564 |       6789281079934204 |
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_CPC_TCIU_BUSY              |             534 |           6789281060081123 |         6789281079930585 |         6789281079932564 |       6789281079934204 |
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_CPC_TCIU_IDLE              |           20569 |           6789352286866085 |         6789352306292985 |         6789352306292904 |       6789352306294424 |
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_CPC_UTCL2IU_BUSY           |             358 |           6789352286866085 |         6789352306292985 |         6789352306292904 |       6789352306294424 |
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_CPC_UTCL2IU_IDLE           |           20046 |           6789422289668823 |         6789422308914683 |         6789422308913883 |       6789422308915403 |
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_ME1_BUSY_FOR_PACKET_DECODE |           16331 |           6789422289668823 |         6789422308914683 |         6789422308913883 |       6789422308915403 |
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_ME1_DC0_SPI_BUSY           |             455 |           6789492192490428 |         6789492210892375 |         6789492210897243 |       6789492210898883 |
-| torch.ones_like | 1@__init__.py:231 | void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>) | CPC_UTCL1_STALL_ON_TRANSLATION |             374 |           6789492192490428 |         6789492210892375 |         6789492210897243 |       6789492210898883 |
+.. list-table::
+   :header-rows: 1
+   :widths: 16 14 42 22 12 14 14 14 14
+
+   * - Operator_Name
+     - Context_Id
+     - Kernel_Name
+     - Counter_Name
+     - Counter_Value
+     - Start_Timestamp_function
+     - End_Timestamp_function
+     - Start_Timestamp_kernel
+     - End_Timestamp_kernel
+
+   * - torch.ones_like
+     - 1@__init__.py:231
+     - ``void at::native::vectorized_elementwise_kernel<...>(...)``
+     - CPC_CPC_STAT_BUSY
+     - 23004
+     - 6789210204040073
+     - 6789210223815845
+     - 6789210223810274
+     - 6789210223811914
+
+   * - torch.ones_like
+     - 1@__init__.py:231
+     - ``void at::native::vectorized_elementwise_kernel<...>(...)``
+     - CPC_CPC_STAT_IDLE
+     - 0
+     - 6789210204040073
+     - 6789210223815845
+     - 6789210223810274
+     - 6789210223811914
+
+   * - torch.ones_like
+     - 1@__init__.py:231
+     - ``void at::native::vectorized_elementwise_kernel<...>(...)``
+     - CPC_CPC_STAT_STALL
+     - 6715
+     - 6789281060081123
+     - 6789281079930585
+     - 6789281079932564
+     - 6789281079934204
 
 ``pmc_perf.csv``
    Standard performance counter data (same as non-torch profiling)
