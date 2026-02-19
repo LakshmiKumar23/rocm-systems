@@ -140,7 +140,10 @@ __device__ void QueuePair::post_wqe_rma(int pe, int32_t size, uintptr_t laddr,
       turns = __ballot(need_turn);
     }
   } else {
-    if (is_thread_zero_in_wave()) {
+    // if (is_thread_zero_in_wave()) {
+    if ((wf_info.scope == ThreadScope::wave ||
+         wf_info.scope == ThreadScope::wg) &&
+         wf_info.is_pe_group_leader) {
       post_wqe_rma_mt(pe, size, laddr, raddr, opcode, wf_info);
     }
   }
@@ -213,7 +216,10 @@ __device__ uint64_t QueuePair::post_wqe_amo(int32_t size, uintptr_t raddr,
 
 __device__ void QueuePair::quiet(ActiveWFInfo &wf_info) {
   if (wf_info.scope == ThreadScope::wave || wf_info.scope == ThreadScope::wg) {
-    if (is_thread_zero_in_wave()) {
+    // if (is_thread_zero_in_wave()) {
+    if ((wf_info.scope == ThreadScope::wave ||
+         wf_info.scope == ThreadScope::wg) &&
+         wf_info.is_pe_group_leader) {
       quiet_scope(wf_info);
     }
   } else {
