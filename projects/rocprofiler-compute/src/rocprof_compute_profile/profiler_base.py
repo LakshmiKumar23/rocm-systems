@@ -699,6 +699,15 @@ class RocProfCompute_Base:
                 "See documentation for more information."
             )
 
+        console_warning(
+            "\tProfiling serializes kernel dispatches across HIP streams.\n"
+            "\t\tKernels launched on separate streams will not execute "
+            "concurrently during profiling.\n"
+            "\t\tKernel timing and throughput metrics reflect serialized execution, "
+            "not the concurrent behavior that may occur during normal execution.\n"
+            "\t\tSee documentation for more information."
+        )
+
         total_profiling_time = 0.0
 
         for fname in input_files:
