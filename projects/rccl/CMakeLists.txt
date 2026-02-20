@@ -121,7 +121,6 @@ else()
 endif()
 
 set(GPU_TARGETS "${SUPPORTED_GPUS}")
-set(GPU_TARGETS "${SUPPORTED_GPUS}")
 message(STATUS "Compiling for ${GPU_TARGETS}")
 
 # Auto-disable SMI for gfx1151 as it is not supported
