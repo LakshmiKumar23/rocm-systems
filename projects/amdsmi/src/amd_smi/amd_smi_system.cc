@@ -441,6 +441,10 @@ amdsmi_status_t AMDSmiSystem::populate_amd_ainic_devices() {
 
     smi_nic_discovery_t discovery = {};
     status = smi_discover_nics(ainic_ctx_, &discovery);
+    if (status == SMI_NIC_STATUS_NO_DATA) {
+        // No AMD NIC devices present (e.g. CI without NIC hardware) - not fatal
+        return AMDSMI_STATUS_SUCCESS;
+    }
     CHK_AMDNIC_RET(status);
 
     for(uint32_t nic_idx = 0; nic_idx < discovery.count; ++nic_idx) {
