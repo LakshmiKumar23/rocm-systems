@@ -45,6 +45,7 @@ option(FAULT_INJECTION                         "Enable fault injection"         
 option(QUIET_WARNINGS                          "Supress compiler warnings"                     OFF)
 option(ENABLE_ROCSHMEM                         "Enable rocSHMEM support in RCCL"               OFF)
 option(ENABLE_AMDSMI                           "Enable AMD/ROCm SMI support"                   ON)
+option(ENABLE_COMPRESS                         "Enable GPU code compression"                   OFF)
 
 
 
@@ -1209,12 +1210,12 @@ if (HAVE_PARALLEL_JOBS)
   target_compile_options(rccl PRIVATE -parallel-jobs=12)
 endif()
 
-if (ROCM_VERSION VERSION_GREATER_EQUAL "60200" AND NOT NO_COMPRESS)
+if (ROCM_VERSION VERSION_GREATER_EQUAL "60200" AND ENABLE_COMPRESS)
   target_compile_options(rccl PRIVATE --offload-compress)    # Compress GPU code at compile time.
   target_link_libraries(rccl PRIVATE --offload-compress)     # Compress GPU code at link time.
   message(STATUS "--offload-compress enabled - ROCm version >= 6.2.0")
 else()
-  message(STATUS "--offload-compress disabled (ROCM < 6.2.0 or NO_COMPRESS=ON)")
+  message(STATUS "--offload-compress disabled (ROCM < 6.2.0 or ENABLE_COMPRESS=OFF)")
 endif()
 
 target_compile_options(rccl PRIVATE -Werror=uninitialized)
