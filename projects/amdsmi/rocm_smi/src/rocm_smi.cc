@@ -5259,6 +5259,32 @@ rsmi_compute_process_info_get(rsmi_process_info_t *procs,
     *num_items = procs_found;
   }
 
+  // Populate per-process stats (vram, sdma, cu_occupancy, evicted_time)
+  // GetProcessInfo only enumerates PIDs; we must fill in the rest.
+  if (procs != nullptr) {
+    amd::smi::RocmSMI& smi = amd::smi::RocmSMI::getInstance();
+    std::unordered_set<uint64_t> gpu_set;
+    for (auto it = smi.kfd_node_map().begin();
+         it != smi.kfd_node_map().end(); ++it) {
+      gpu_set.insert(it->first);
+    }
+
+    for (uint32_t i = 0; i < procs_found; ++i) {
+      int proc_err = amd::smi::GetProcessInfoForPID(
+          procs[i].process_id, &procs[i], &gpu_set);
+      // Non-fatal: if a process disappeared between enumeration
+      // and info collection (ESRCH), zero-fill and continue
+      if (proc_err == ESRCH) {
+        procs[i].vram_usage = 0;
+        procs[i].sdma_usage = 0;
+        procs[i].cu_occupancy = 0;
+        procs[i].evicted_time = 0;
+      } else if (proc_err) {
+        return amd::smi::ErrnoToRsmiStatus(proc_err);
+      }
+    }
+  }
+
   return RSMI_STATUS_SUCCESS;
 
   CATCH
