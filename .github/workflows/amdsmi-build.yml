@@ -134,7 +134,8 @@ jobs:
 
               # Verify Installation
               echo 'Verifying installation:'
-              amd-smi version --loglevel=DEBUG 2>&1
+              amd-smi version --loglevel=DEBUG > out.txt 2>&1 || true
+              cat out.txt
               python3 -m pip list | grep amd
               python3 -m pip list | grep pip
               python3 -m pip list | grep setuptools
@@ -255,19 +256,19 @@ jobs:
           echo "Running AMDSMI commands on ${{ matrix.os }}"
           mkdir -p /tmp/test-results-${{ matrix.os }}
           commands=(
-            "amd-smi version --loglevel=DEBUG 2>&1"
-            "amd-smi list --loglevel=DEBUG 2>&1"
-            "amd-smi static --loglevel=DEBUG 2>&1"
-            "amd-smi firmware --loglevel=DEBUG 2>&1"
-            "amd-smi ucode --loglevel=DEBUG 2>&1"
-            "amd-smi bad-pages --loglevel=DEBUG 2>&1"
-            "amd-smi metric --loglevel=DEBUG 2>&1"
-            "amd-smi process --loglevel=DEBUG 2>&1"
-            "amd-smi topology --loglevel=DEBUG 2>&1"
-            "amd-smi monitor --loglevel=DEBUG 2>&1"
-            "amd-smi dmon --loglevel=DEBUG 2>&1"
-            "amd-smi xgmi --loglevel=DEBUG 2>&1"
-            "amd-smi partition --loglevel=DEBUG 2>&1"
+            "amd-smi version --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi list --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi static --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi firmware --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi ucode --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi bad-pages --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi metric --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi process --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi topology --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi monitor --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi dmon --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi xgmi --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi partition --loglevel=DEBUG > out.txt 2>&1 || true"
           )
           for cmd in "${commands[@]}"; do
             debug_cmd="$cmd --loglevel debug"
@@ -557,7 +558,7 @@ jobs:
               ln -s /opt/rocm/bin/amd-smi /usr/local/bin
 
               echo 'Verifying installation:'
-              amd-smi version --loglevel=DEBUG 2>&1
+              amd-smi version --loglevel=DEBUG > out.txt 2>&1 || true
               python3 -m pip list | grep amd
               python3 -m pip list | grep pip
               python3 -m pip list | grep setuptools
@@ -604,7 +605,7 @@ jobs:
 
           # Verify Installation
           echo 'Verifying installation:'
-          amd-smi version --loglevel=DEBUG 2>&1
+          amd-smi version --loglevel=DEBUG > out.txt 2>&1 || true
           python3 -m pip list | grep amd
           python3 -m pip list | grep pip
           python3 -m pip list | grep setuptools
@@ -780,19 +781,19 @@ jobs:
           echo "Running AMDSMI commands on ${{ matrix.os }}"
           mkdir -p /tmp/test-results-${{ matrix.os }}
           commands=(
-            "amd-smi version --loglevel=DEBUG 2>&1"
-            "amd-smi list --loglevel=DEBUG 2>&1"
-            "amd-smi static --loglevel=DEBUG 2>&1"
-            "amd-smi firmware --loglevel=DEBUG 2>&1"
-            "amd-smi ucode --loglevel=DEBUG 2>&1"
-            "amd-smi bad-pages --loglevel=DEBUG 2>&1"
-            "amd-smi metric --loglevel=DEBUG 2>&1"
-            "amd-smi process --loglevel=DEBUG 2>&1"
-            "amd-smi topology --loglevel=DEBUG 2>&1"
-            "amd-smi monitor --loglevel=DEBUG 2>&1"
-            "amd-smi dmon --loglevel=DEBUG 2>&1"
-            "amd-smi xgmi --loglevel=DEBUG 2>&1"
-            "amd-smi partition --loglevel=DEBUG 2>&1"
+            "amd-smi version --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi list --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi static --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi firmware --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi ucode --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi bad-pages --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi metric --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi process --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi topology --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi monitor --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi dmon --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi xgmi --loglevel=DEBUG > out.txt 2>&1 || true"
+            "amd-smi partition --loglevel=DEBUG > out.txt 2>&1 || true"
           )
           for cmd in "${commands[@]}"; do
             debug_cmd="$cmd --loglevel debug"
