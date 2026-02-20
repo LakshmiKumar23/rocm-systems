@@ -99,7 +99,7 @@ jobs:
 
               # Verify Installation
               echo 'Verifying installation:'
-              amd-smi version --loglevel=DEBUG 1>&2
+              amd-smi version --loglevel=DEBUG
               python3 -m pip list | grep amd
               python3 -m pip list | grep pip
               python3 -m pip list | grep setuptools
@@ -212,19 +212,19 @@ jobs:
           echo "Running AMDSMI commands on ${{ matrix.os }}"
           mkdir -p /tmp/test-results-${{ matrix.os }}
           commands=(
-            "amd-smi version --loglevel=DEBUG 1>&2"
-            "amd-smi list --loglevel=DEBUG 1>&2"
-            "amd-smi static --loglevel=DEBUG 1>&2"
-            "amd-smi firmware --loglevel=DEBUG 1>&2"
-            "amd-smi ucode --loglevel=DEBUG 1>&2"
-            "amd-smi bad-pages --loglevel=DEBUG 1>&2"
-            "amd-smi metric --loglevel=DEBUG 1>&2"
-            "amd-smi process --loglevel=DEBUG 1>&2"
-            "amd-smi topology --loglevel=DEBUG 1>&2"
-            "amd-smi monitor --loglevel=DEBUG 1>&2"
-            "amd-smi dmon --loglevel=DEBUG 1>&2"
-            "amd-smi xgmi --loglevel=DEBUG 1>&2"
-            "amd-smi partition --loglevel=DEBUG 1>&2"
+            "amd-smi version"
+            "amd-smi list"
+            "amd-smi static"
+            "amd-smi firmware"
+            "amd-smi ucode"
+            "amd-smi bad-pages"
+            "amd-smi metric"
+            "amd-smi process"
+            "amd-smi topology"
+            "amd-smi monitor"
+            "amd-smi dmon"
+            "amd-smi xgmi"
+            "amd-smi partition"
           )
           for cmd in "${commands[@]}"; do
             debug_cmd="$cmd --loglevel debug"
@@ -480,7 +480,7 @@ jobs:
               ln -s /opt/rocm/bin/amd-smi /usr/local/bin
 
               echo 'Verifying installation:'
-              amd-smi version --loglevel=DEBUG 1>&2
+              amd-smi version
               python3 -m pip list | grep amd
               python3 -m pip list | grep pip
               python3 -m pip list | grep setuptools
@@ -527,7 +527,7 @@ jobs:
 
           # Verify Installation
           echo 'Verifying installation:'
-          amd-smi version --loglevel=DEBUG 1>&2
+          amd-smi version
           python3 -m pip list | grep amd
           python3 -m pip list | grep pip
           python3 -m pip list | grep setuptools
@@ -695,7 +695,7 @@ jobs:
           echo "Running AMDSMI commands on ${{ matrix.os }}"
           mkdir -p /tmp/test-results-${{ matrix.os }}
           commands=(
-            "amd-smi version --loglevel=DEBUG 1>&2"
+            "amd-smi version"
             "amd-smi list"
             "amd-smi static"
             "amd-smi firmware"
