@@ -106,3 +106,12 @@ How can I SSH tunnel in MobaXterm?
      * ``<SSH server>``: *name of the server to connect to*
      * ``<SSH login>``: *username to login to the server*
      * ``<SSH port>``: ``22``
+
+Why are kernels on separate HIP streams not executing concurrently during profiling?
+====================================================================================
+
+Kernel dispatches are serialized across HIP streams during profiling so
+that only one kernel executes at a time. As a result, kernels launched on
+separate HIP streams will run one after another during profiling. Kernel
+duration and throughput metrics reflect this serialized execution rather
+than the concurrent behavior that may occur during normal execution.

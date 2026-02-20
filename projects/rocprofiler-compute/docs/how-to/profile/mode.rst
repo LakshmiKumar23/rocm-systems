@@ -45,6 +45,17 @@ Profiling with ROCm Compute Profiler yields the following benefits.
 Run ``rocprof-compute profile -h`` for more details. See
 :ref:`Basic usage <modes-profile>`.
 
+.. warning::
+
+   **Kernel dispatches are serialized across HIP streams during profiling.**
+   Kernels launched on separate HIP streams will not execute concurrently
+   during profiling. This means:
+
+   - Kernel duration and throughput metrics reflect serialized execution, not
+     the concurrent behavior that may occur during normal execution.
+   - Some metrics may show reduced utilization compared to normal execution
+     due to the lack of concurrent kernel execution.
+
 .. _profile-example:
 
 Profiling example
