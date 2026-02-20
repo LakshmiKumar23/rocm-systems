@@ -804,7 +804,6 @@ else()
   # the broken system library.
   list(APPEND SRC_FILES src/misc/smi_shim.cc)
 endif()
-list(APPEND SRC_FILES ${SMI_SOURCES})
 
 if (ENABLE_MSCCL_KERNEL)
   set(MSCCL_KERNEL_SOURCES
