@@ -44,7 +44,7 @@ option(TRACE                                   "Enable additional tracing"      
 option(FAULT_INJECTION                         "Enable fault injection"                        ON)
 option(QUIET_WARNINGS                          "Supress compiler warnings"                     OFF)
 option(ENABLE_ROCSHMEM                         "Enable rocSHMEM support in RCCL"               OFF)
-option(ENABLE_AMDSMI                           "Enable AMD/ROCm SMI support"                   ON)
+option(ENABLE_SMI                              "Enable AMD/ROCm SMI support"                   ON)
 option(ENABLE_COMPRESS                         "Enable GPU code compression"                   OFF)
 
 
@@ -126,16 +126,11 @@ message(STATUS "Compiling for ${GPU_TARGETS}")
 
 # Auto-disable SMI for gfx1151 as it is not supported
 if("${GPU_TARGETS}" MATCHES "gfx1151")
-  message(STATUS "Detected gfx1151 target: Forcing ENABLE_AMDSMI=OFF")
-  set(ENABLE_AMDSMI OFF CACHE BOOL "Force disable SMI for gfx1151" FORCE)
+  message(STATUS "Detected gfx1151 target: Forcing ENABLE_SMI=OFF")
+  set(ENABLE_SMI OFF CACHE BOOL "Force disable SMI for gfx1151" FORCE)
 endif()
 
-if(ENABLE_AMDSMI)
-  message(STATUS "SMI Support: ENABLED")
-  add_compile_definitions(RCCL_SMI_ENABLED)
-else()
-  message(STATUS "SMI Support: DISABLED")
-endif()
+message(STATUS "SMI Support: ${ENABLE_SMI}")
 
 ## NOTE: Reload rocm-cmake in order to update GPU_TARGETS
 include(cmake/Dependencies.cmake) # Reloading to use desired GPU_TARGETS instead of defaults
@@ -287,7 +282,7 @@ get_target_property(HSA_INCLUDE_PATH hsa-runtime64::hsa-runtime64 INTERFACE_INCL
 message(STATUS "HSA runtime: ${HSA_INCLUDE_PATH}")
 
 ## Check for amd-smi if ROCm 7.11.0 or newer
-if(ROCM_VERSION VERSION_GREATER_EQUAL "71100" AND ENABLE_AMDSMI)
+if(ROCM_VERSION VERSION_GREATER_EQUAL "71100" AND ENABLE_SMI)
   find_package(amd_smi PATHS ${ROCM_PATH}/lib/cmake/amd_smi)
   if(amd_smi_FOUND)
     message(STATUS "amd_smi_INCLUDE_DIR: ${amd_smi_INCLUDE_DIR}")
@@ -791,7 +786,7 @@ set(SMI_HEADERS
 )
 list(APPEND SRC_FILES ${SMI_HEADERS})
 
-if(ENABLE_AMDSMI)
+if(ENABLE_SMI)
   # Only compile the wrapper sources if SMI is enabled
   if(USE_AMDSMI)
      list(APPEND SRC_FILES src/misc/amdsmi_wrap.cc)
@@ -1203,6 +1198,9 @@ if(LL128_ENABLED)
 endif()
 if (GENERATE_SYM_KERNELS)
   target_compile_definitions(rccl PRIVATE GENERATE_SYM_KERNELS)
+endif()
+if(ENABLE_SMI)
+  target_compile_definitions(rccl PRIVATE RCCL_SMI_ENABLED)
 endif()
 
 ## Set RCCL compile options
