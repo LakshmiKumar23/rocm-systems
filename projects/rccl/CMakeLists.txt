@@ -47,8 +47,6 @@ option(ENABLE_ROCSHMEM                         "Enable rocSHMEM support in RCCL"
 option(ENABLE_SMI                              "Enable AMD/ROCm SMI support"                   ON)
 option(ENABLE_COMPRESS                         "Enable GPU code compression"                   OFF)
 
-
-
 # Default GPU architectures to build
 #==================================================================================================
 set(DEFAULT_GPUS
