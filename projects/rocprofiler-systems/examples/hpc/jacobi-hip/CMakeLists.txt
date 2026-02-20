@@ -12,7 +12,6 @@ if(NOT hipcc_EXECUTABLE)
     return()
 endif()
 
-set(CMAKE_HIP_COMPILER ${hipcc_EXECUTABLE})
 enable_language(HIP)
 
 find_package(MPI QUIET COMPONENTS CXX)

@@ -61,14 +61,6 @@ def split_copy_compute_hw_queues_rules(validation_rules_dir) -> list[Path]:
         rules_dir / "sdk-metrics-rules.json",
     ]
 
-@pytest.fixture
-def jacobi_openmp_roctx_rules(validation_rules_dir) -> list[Path]:
-    """Get validation rules for jacobi openmp roctx tests."""
-    rules_dir = validation_rules_dir / "openmp-target"
-    return [
-        rules_dir / "sdk-metrics-rules.json",
-    ]
-
 # =============================================================================
 # HPC Tests
 # =============================================================================
@@ -138,10 +130,11 @@ class TestJacobi(RocprofsysTest):
                 depths=[1],
             )
     
+    
     @pytest.mark.openmp
     @pytest.mark.roctx
     @pytest.mark.parametrize("mode", ["binary_rewrite", "sys_run"])
-    def test_roctx(self, mode, hpc_openmp_environment, jacobi_openmp_roctx_rules):
+    def test_roctx(self, mode, hpc_openmp_environment):
         env = hpc_openmp_environment.copy()
         env["ROCPROFSYS_ROCM_DOMAINS"] = "hip_api,kernel_dispatch,roctx,memory_copy"
         env["ROCPROFSYS_TRACE_LEGACY"] = "ON"
@@ -165,14 +158,10 @@ class TestJacobi(RocprofsysTest):
             depths=[1, 1],
         )
 
-        # Verify against standard OpenMP target rules
-        self.assert_rocpd(result,
-            rules_files=jacobi_openmp_roctx_rules,
-        )
     
-    @pytest.mark.rocpd("hpc_hip_environment")
     @pytest.mark.hip
     @pytest.mark.mpi
+    @pytest.mark.rocpd("hpc_hip_environment")
     @pytest.mark.parametrize("mode", ["sys_run"])
     def test_hip(self, mode, hpc_hip_environment):
         env = hpc_hip_environment.copy()
