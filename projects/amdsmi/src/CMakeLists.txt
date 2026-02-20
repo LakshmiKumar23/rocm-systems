@@ -54,7 +54,7 @@ function(BuildNic OUT_AMDSMINIC_LIB OUT_AMDSMINIC_PATH)
             -S ${CMAKE_CURRENT_SOURCE_DIR}/nic/ai-nic/amdsmi_unified 
             -B ${CMAKE_CURRENT_BINARY_DIR}/ai-nic
         COMMAND ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR}/ai-nic --parallel
-        COMMAND ${CMAKE_COMMAND} -E rename ${AMDSMINIC_PATH} "${CMAKE_CURRENT_BINARY_DIR}/ai-nic/lib${AMDSMINIC_LIB}.a"
+        COMMAND ${CMAKE_COMMAND} -E copy ${AMDSMINIC_PATH} "${CMAKE_CURRENT_BINARY_DIR}/ai-nic/lib${AMDSMINIC_LIB}.a"
         COMMENT "Building ${AMDSMINIC_LIB} library in ${CMAKE_CURRENT_BINARY_DIR}/ai-nic"
     )
     set(${OUT_AMDSMINIC_LIB} ${AMDSMINIC_LIB} PARENT_SCOPE)
