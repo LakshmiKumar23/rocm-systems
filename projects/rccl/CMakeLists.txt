@@ -45,7 +45,7 @@ option(FAULT_INJECTION                         "Enable fault injection"         
 option(QUIET_WARNINGS                          "Supress compiler warnings"                     OFF)
 option(ENABLE_ROCSHMEM                         "Enable rocSHMEM support in RCCL"               OFF)
 option(ENABLE_SMI                              "Enable AMD/ROCm SMI support"                   ON)
-option(ENABLE_COMPRESS                         "Enable GPU code compression"                   OFF)
+option(ENABLE_COMPRESS                         "Enable GPU code compression"                   ON)
 
 # Default GPU architectures to build
 #==================================================================================================
