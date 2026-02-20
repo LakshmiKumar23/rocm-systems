@@ -99,7 +99,7 @@ jobs:
 
               # Verify Installation
               echo 'Verifying installation:'
-              amd-smi version
+              amd-smi version --loglevel=DEBUG
               python3 -m pip list | grep amd
               python3 -m pip list | grep pip
               python3 -m pip list | grep setuptools
