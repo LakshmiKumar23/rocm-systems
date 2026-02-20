@@ -81,6 +81,10 @@ using sampler_instances = thread_data<bundle_t, category::amd_smi>;
 
 namespace
 {
+// Static storage for SDMA usage delta computation
+std::unordered_map<uint32_t, uint64_t> prev_sdma_cumulative;
+std::unordered_map<uint32_t, uint64_t> prev_sdma_timestamp;
+
 void
 metadata_initialize_category()
 {
@@ -198,6 +202,12 @@ metadata_initialize_smi_tracks(size_t gpu_id)
     trace_cache::get_metadata_registry().add_track(
         { trace_cache::info::annotate_with_device_id<
               category::amd_smi_pcie_bandwidth_inst>(gpu_id),
+          thread_id, "{}" });
+
+    // Add SDMA usage track
+    trace_cache::get_metadata_registry().add_track(
+        { trace_cache::info::annotate_with_device_id<category::amd_smi_sdma_usage>(
+              gpu_id),
           thread_id, "{}" });
 }
 
@@ -464,8 +474,8 @@ serialize_gpu_metrics(uint32_t device_id, const data::gpu_metrics_t& metrics,
 size_t
 serialize_settings(uint32_t _device_id)
 {
-    auto           settings = get_settings(_device_id);
-    std::bitset<8> settings_bits;
+    auto            settings = get_settings(_device_id);
+    std::bitset<16> settings_bits;
     settings_bits.reset();
     settings_bits.set(
         static_cast<int>(trace_cache::amd_smi_sample::settings_positions::busy),
@@ -491,6 +501,9 @@ serialize_settings(uint32_t _device_id)
     settings_bits.set(
         static_cast<int>(trace_cache::amd_smi_sample::settings_positions::pcie),
         settings.pcie);
+    settings_bits.set(
+        static_cast<int>(trace_cache::amd_smi_sample::settings_positions::sdma_usage),
+        settings.sdma_usage);
     return settings_bits.to_ulong();
 }
 
@@ -685,14 +698,74 @@ data::sample(uint32_t _device_id)
             }
         }
 
+        // Collect SDMA usage if enabled
+        uint32_t sdma_usage_percent = 0;
+        if(get_settings(m_dev_id).sdma_usage)
+        {
+            uint64_t current_cumulative = 0;
+            uint32_t num_processes      = 0;
+
+            // Timing measurement for overhead analysis
+            auto _sdma_start = tim::get_clock_real_now<size_t, std::nano>();
+
+            // First call to get count
+            auto status =
+                amdsmi_get_gpu_process_list(sample_handle, &num_processes, nullptr);
+
+            if(status == AMDSMI_STATUS_SUCCESS && num_processes > 0)
+            {
+                std::vector<amdsmi_proc_info_t> proc_list(num_processes);
+                status = amdsmi_get_gpu_process_list(sample_handle, &num_processes,
+                                                     proc_list.data());
+
+                if(status == AMDSMI_STATUS_SUCCESS)
+                {
+                    for(const auto& proc : proc_list)
+                    {
+                        current_cumulative += proc.sdma_usage;  // microseconds
+                    }
+                }
+            }
+
+            auto _sdma_end         = tim::get_clock_real_now<size_t, std::nano>();
+            auto _sdma_duration_us = (_sdma_end - _sdma_start) / 1000;
+            LOG_TRACE(
+                "amdsmi_get_gpu_process_list() for device {} took {} us, {} processes",
+                m_dev_id, _sdma_duration_us, num_processes);
+
+            // Compute percentage from delta
+            if(prev_sdma_cumulative.count(m_dev_id) > 0)
+            {
+                uint64_t delta_usage =
+                    current_cumulative - prev_sdma_cumulative[m_dev_id];
+                uint64_t delta_time = _timestamp - prev_sdma_timestamp[m_dev_id];  // ns
+
+                if(delta_time > 0)
+                {
+                    // Convert: delta_usage is in μs, delta_time is in ns
+                    // percentage = (delta_usage * 1000 / delta_time) * 100
+                    //            = (delta_usage * 100000) / delta_time
+                    sdma_usage_percent =
+                        static_cast<uint32_t>((delta_usage * 100000ULL) / delta_time);
+
+                    // Clamp to 100% max
+                    if(sdma_usage_percent > 100) sdma_usage_percent = 100;
+                }
+            }
+
+            prev_sdma_cumulative[m_dev_id] = current_cumulative;
+            prev_sdma_timestamp[m_dev_id]  = _timestamp;
+        }
+
         // Store samples if basic metrics are enabled OR if there's advanced metric data
-        if(_basic_metrics_enabled || has_data)
+        if(_basic_metrics_enabled || has_data || get_settings(m_dev_id).sdma_usage)
         {
             trace_cache::get_buffer_storage().store(trace_cache::amd_smi_sample{
                 serialize_settings(m_dev_id), _device_id, _timestamp,
                 m_busy_perc.gfx_activity, m_busy_perc.umc_activity,
                 m_busy_perc.mm_activity, m_power.current_socket_power, m_temp,
-                m_mem_usage, serialize_gpu_metrics(m_dev_id, metrics, capabilities) });
+                m_mem_usage, serialize_gpu_metrics(m_dev_id, metrics, capabilities),
+                sdma_usage_percent });
 
             if(has_data) m_gpu_metrics.push_back(metrics);
         }
@@ -1215,6 +1288,7 @@ setup()
                     key_pair_t{ "jpeg_activity", get_settings(itr).jpeg_activity },
                     key_pair_t{ "xgmi", get_settings(itr).xgmi },
                     key_pair_t{ "pcie", get_settings(itr).pcie },
+                    key_pair_t{ "sdma_usage", get_settings(itr).sdma_usage },
                 };
 
                 // Initialize all metrics to false

@@ -89,6 +89,7 @@ struct settings
     bool jpeg_activity = true;
     bool xgmi          = true;
     bool pcie          = true;
+    bool sdma_usage    = true;
 };
 
 struct data
