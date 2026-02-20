@@ -364,3 +364,27 @@ def get_target_gpu_arch(rocm_path: Path, target_path: Path) -> list[str]:
             pass
 
     return list(target_archs)
+
+@lru_cache(maxsize=1)
+def get_xnack_support(rocm_path: Path) -> bool:
+    """Check if a current GPU supports XNACK.
+
+    Runs rocminfo and checks if 'xnack' appears in the output.
+    """
+    rocminfo = get_rocminfo(rocm_path)
+    if not rocminfo:
+        return False
+
+    try:
+        result = subprocess.run(
+            [str(rocminfo)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return "xnack" in result.stdout
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+    return False
