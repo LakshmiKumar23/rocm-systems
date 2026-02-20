@@ -3644,3 +3644,27 @@ def test_multi_rank_warning_pc_sampling(
     assert "--set" in output
 
     test_utils.clean_output_dir(config["cleanup"], workload_dir)
+
+
+def test_stream_serialization_warning(binary_handler_profile_rocprof_compute):
+    """
+    Test that a warning about kernel dispatch serialization across HIP streams
+    is printed during profiling.
+    """
+    workload_dir = test_utils.get_output_dir()
+
+    options = ["--iteration-multiplexing", "--no-roof"]
+
+    _, stdout, stderr = binary_handler_profile_rocprof_compute(
+        config,
+        workload_dir,
+        options,
+        app_name="app_1",
+        capture_output=True,
+        check_success=False,
+    )
+
+    output = stdout + stderr
+    assert "serializes kernel dispatches across HIP streams" in output
+
+    test_utils.clean_output_dir(config["cleanup"], workload_dir)
