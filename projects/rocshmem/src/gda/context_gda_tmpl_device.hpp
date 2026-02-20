@@ -609,26 +609,15 @@ __device__ void GDAContext::internal_broadcast(T *dst, const T *src, int nelems,
 template <typename T>
 __device__ void GDAContext::alltoall(rocshmem_team_t team, T *dst,
                                      const T *src, int nelems) {
-  if (gda_provider_ == GDAProvider::BNXT ||
-      gda_provider_ == GDAProvider::IONIC) {
-    alltoall_linear_thread_puts(team, dst, src, nelems);
-  } else {
-    alltoall_linear(team, dst, src, nelems);
-  }
+  alltoall_linear_thread_puts(team, dst, src, nelems);
 }
-template <typename T>
 
+template <typename T>
 __device__ void GDAContext::alltoallv(rocshmem_team_t team,
                                       T *dest, const size_t dest_nelems[],
                                       const size_t dest_displs[],
                                       T *source, const size_t source_nelems[],
                                       const size_t source_displs[]) {
-  if (gda_provider_ == GDAProvider::MLX5 ||
-      gda_provider_ == GDAProvider::IONIC) {
-    printf("rocshmem::gda:alltoallv not implemented\n");
-    abort();
-  }
-
   alltoallv_get(team,
                 dest, dest_nelems, dest_displs,
                 source, source_nelems, source_displs);
