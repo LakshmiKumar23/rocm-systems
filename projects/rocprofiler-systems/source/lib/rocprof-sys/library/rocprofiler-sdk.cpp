@@ -79,7 +79,9 @@ namespace rocprofiler_sdk
 namespace
 {
 using tool_agent_vec_t = std::vector<tool_agent>;
-client_data* tool_data = new client_data{};
+
+client_data* tool_data      = new client_data{};
+bool         tool_fini_done = false;
 
 void
 thread_precreate(rocprofiler_runtime_library_t /*lib*/, void* /*tool_data*/)
@@ -2508,8 +2510,8 @@ tool_init(rocprofiler_client_finalize_t fini_func, void* user_data)
 void
 tool_fini(void* callback_data)
 {
-    static std::atomic_flag _once = ATOMIC_FLAG_INIT;
-    if(_once.test_and_set()) return;
+    if(tool_fini_done) return;
+    tool_fini_done = true;
 
 #if(ROCPROFILER_VERSION >= 600)
     ompt_finalize_orphan_events();
@@ -2531,11 +2533,14 @@ tool_fini(void* callback_data)
     auto* _data        = as_client_data(callback_data);
     _data->client_id   = nullptr;
     _data->client_fini = nullptr;
-
-    delete tool_data;
-    tool_data = nullptr;
 }
 }  // namespace
+
+void
+reset_state()
+{
+    tool_fini_done = false;
+}
 
 void
 setup()
@@ -2630,10 +2635,8 @@ sdk_tool_configure(uint32_t version, const char* runtime_version,
 
     if(!rocprofsys::config::get_use_rocm()) return false;
 
-    // set the client name
     id->name = "rocprofsys";
 
-    // ensure tool data exists
     if(!rocprofsys::rocprofiler_sdk::tool_data)
         rocprofsys::rocprofiler_sdk::tool_data =
             new rocprofsys::rocprofiler_sdk::client_data{};
@@ -2689,20 +2692,37 @@ extern "C"
 
 #if ROCPROFILER_VERSION >= 10200
     int tool_attach_init([[maybe_unused]] rocprofiler_client_detach_t detach_func,
-                         [[maybe_unused]] rocprofiler_context_id_t*   context_ids,
-                         [[maybe_unused]] uint64_t                    context_ids_length,
-                         [[maybe_unused]] void*                       tool_data)
+                         rocprofiler_context_id_t*                    context_ids,
+                         uint64_t context_ids_length, [[maybe_unused]] void* tool_data)
     {
-        LOG_TRACE("Tool attach initialize called");
-        // Tools are already configured when rocprofiler_configure is called.
+        // On re-attach after detach, state is PreInit and we need to reinitialize
+        if(rocprofsys::get_state() == rocprofsys::State::PreInit)
+        {
+            rocprofsys_init_tooling_hidden();
+
+            // Reinitialize AMD SMI if configured
+            if(rocprofsys::config::get_use_process_sampling() &&
+               rocprofsys::config::get_use_amd_smi())
+            {
+                rocprofsys::amd_smi::setup();
+                rocprofsys::amd_smi::set_state(rocprofsys::State::Active);
+            }
+        }
+
+        // Start all contexts provided by the SDK
+        for(uint64_t i = 0; i < context_ids_length; ++i)
+        {
+            ROCPROFILER_CALL(rocprofiler_start_context(context_ids[i]));
+        }
+
         return 0;
     }
 
     void tool_attach_fini(void* tool_data)
     {
-        LOG_TRACE("Tool attach finalize called");
         ::rocprofsys::rocprofiler_sdk::tool_fini(tool_data);
         rocprofsys_finalize_hidden();
+        ::rocprofsys::rocprofiler_sdk::reset_state();
     }
 
     rocprofiler_tool_configure_attach_result_t* rocprofiler_configure_attach(

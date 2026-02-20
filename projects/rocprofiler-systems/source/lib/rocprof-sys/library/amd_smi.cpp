@@ -1129,7 +1129,8 @@ setup()
 
     ROCPROFSYS_SCOPED_SAMPLING_ON_CHILD_THREADS(false);
 
-    if(!gpu::initialize_amdsmi())
+    // Always use reinitialize to reset the once_flag (safe even on first init)
+    if(!gpu::reinitialize_amdsmi())
     {
         LOG_WARNING("AMD SMI is not available. Disabling AMD SMI sampling...");
         return;

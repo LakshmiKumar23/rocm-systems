@@ -121,6 +121,10 @@ namespace
 auto _timemory_manager  = tim::manager::instance();
 auto _timemory_settings = tim::settings::shared_instance();
 
+// Initialization guards - resettable to support re-attachment
+bool  init_library_done = false;
+pid_t init_tooling_done = 0;
+
 void
 set_metadata_process_start_timestamp(int64_t _ts)
 {
@@ -431,8 +435,7 @@ rocprofsys_init_library_hidden()
     auto _tid = threading::get_id();
     (void) _tid;
 
-    static bool _once       = false;
-    auto        _debug_init = get_debug_init();
+    auto _debug_init = get_debug_init();
 
     int _selinux_mode = 0;
     {
@@ -460,8 +463,9 @@ rocprofsys_init_library_hidden()
             fmt::format("State is not PreInit :: {}", std::to_string(get_state())));
     }
 
-    if(get_state() != State::PreInit || get_state() == State::Init || _once) return;
-    _once = true;
+    if(get_state() != State::PreInit || get_state() == State::Init || init_library_done)
+        return;
+    init_library_done = true;
 
     ROCPROFSYS_SCOPED_THREAD_STATE(ThreadState::Internal);
 
@@ -522,19 +526,17 @@ rocprofsys_init_tooling_hidden(void)
                                                  { ROCPROFSYS_DEFAULT_ROCM_PATH }) };
 #endif
 
-    static pid_t _once       = 0;
-    static auto  _debug_init = get_debug_init();
+    auto _debug_init = get_debug_init();
 
     if(_debug_init)
     {
         LOG_DEBUG("State is {}...", std::to_string(get_state()));
     }
 
-    if(get_state() != State::PreInit || get_state() == State::Init || _once == getpid())
-    {
+    if(get_state() != State::PreInit || get_state() == State::Init ||
+       init_tooling_done == getpid())
         return false;
-    }
-    _once = getpid();
+    init_tooling_done = getpid();
 
     ROCPROFSYS_SCOPED_THREAD_STATE(ThreadState::Internal);
 
@@ -1129,6 +1131,11 @@ rocprofsys_finalize_hidden(void)
         [](int) {});
 
     common::destroy_static_objects();
+
+    // Reset initialization guards to allow reinitialization (e.g., re-attach)
+    init_library_done = false;
+    init_tooling_done = 0;
+    set_state(State::PreInit);
 }
 
 //======================================================================================//

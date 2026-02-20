@@ -82,37 +82,24 @@ check_amdsmi_error(amdsmi_status_t _code, const char* _file, int _line)
                                          static_cast<int>(_code), _msg));
 }
 
-// Ensures initialization happens only once
-std::once_flag amdsmi_once;
-
-// Tracks whether AMD SMI is initialized
-bool&
-_amdsmi_is_initialized()
-{
-    static bool initialized = false;
-    return initialized;
-}
+bool amdsmi_initialized = false;
 
 bool
 amdsmi_init()
 {
-    auto _amdsmi_init = []() {
-        try
-        {
-            // Currently, only AMDSMI_INIT_AMD_GPUS is supported
-            ROCPROFSYS_AMD_SMI_CALL(::amdsmi_init(AMDSMI_INIT_AMD_GPUS));
-            get_processor_handles();
-            _amdsmi_is_initialized() = true;  // Mark as initialized
-        } catch(std::exception& _e)
-        {
-            LOG_ERROR("Exception thrown initializing amd-smi: {}", _e.what());
-            _amdsmi_is_initialized() = false;  // Mark as not initialized
-            return false;
-        }
-        return true;
-    }();
+    if(amdsmi_initialized) return true;
 
-    return _amdsmi_init;
+    try
+    {
+        ROCPROFSYS_AMD_SMI_CALL(::amdsmi_init(AMDSMI_INIT_AMD_GPUS));
+        get_processor_handles();
+        amdsmi_initialized = true;
+    } catch(std::exception& _e)
+    {
+        LOG_ERROR("Exception thrown initializing amd-smi: {}", _e.what());
+        return false;
+    }
+    return true;
 }
 #endif  // ROCPROFSYS_USE_ROCM > 0
 
@@ -179,9 +166,18 @@ bool
 initialize_amdsmi()
 {
 #if ROCPROFSYS_USE_ROCM > 0
-    // Ensure initialization happens only once
-    std::call_once(amdsmi_once, amdsmi_init);
-    return _amdsmi_is_initialized();
+    return amdsmi_init();
+#else
+    return false;
+#endif
+}
+
+bool
+reinitialize_amdsmi()
+{
+#if ROCPROFSYS_USE_ROCM > 0
+    amdsmi_initialized = false;
+    return amdsmi_init();
 #else
     return false;
 #endif

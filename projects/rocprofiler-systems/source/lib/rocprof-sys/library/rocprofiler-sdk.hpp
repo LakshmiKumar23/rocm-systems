@@ -54,6 +54,9 @@ start();
 void
 stop();
 
+void
+reset_state();
+
 std::vector<hardware_counter_info>
 get_rocm_events_info();
 }  // namespace rocprofiler_sdk
