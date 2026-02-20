@@ -793,6 +793,13 @@ When enabled, this feature instruments your PyTorch application to correlate GPU
 kernel executions with their originating PyTorch operators, providing insights into
 which operators contribute to specific performance counter values.
 
+.. warning::
+
+   Torch trace is an **experimental** feature. You must pass ``--experimental`` to
+   both **profile** and **analyze** when using torch-trace-related options
+   (``--torch-trace`` for profile; ``--list-torch-operators`` and ``--torch-operator``
+   for analyze).
+
 .. note::
 
    **PyTorch Operators vs GPU Kernels**: PyTorch operators (such as ``conv2d``,
@@ -808,17 +815,17 @@ Requirements
 
 * Valid PyTorch installation in the profiling environment
 * PyTorch application must be run as a Python script or Python command
-* Workload's Python version must match the Python version ROCm installs roctx for
+* Workload’s Python version must match roctx’s Python version
 
 Usage
 -----
 
-To enable Torch operator mapping, use ``--torch-trace`` when
-profiling a PyTorch workload:
+To enable Torch operator mapping, use ``--experimental`` with the ``--torch-trace``
+option when profiling a PyTorch workload:
 
 .. code-block:: shell-session
 
-   $ rocprof-compute profile --name mnist_torch --torch-trace -- python train.py
+   $ rocprof-compute --experimental profile --name mnist_torch --torch-trace -- python train.py
 
                                     __                                       _
     _ __ ___   ___ _ __  _ __ ___  / _|       ___ ___  _ __ ___  _ __  _   _| |_ ___
@@ -845,32 +852,29 @@ profiling a PyTorch workload:
 Output
 ------
 
-When Torch operator mapping is enabled, profiling writes additional CSV files in
-the workload directory: **marker_api_trace** and **counter_collection** files with
-the ``torch_trace`` prefix. These correlate PyTorch operators
-with GPU kernels and performance counters. When you run analyze (e.g. with
-``--list-torch-operators``), it builds per-operator CSVs under ``torch_trace/``;
-the source marker and counter files are **retained** in the workload directory and
-are not deleted.
+When Torch operator mapping is enabled, profiling writes additional CSV files in the
+workload directory: **marker_api_trace** and **counter_collection** files with the
+``torch_trace`` prefix (e.g. ``torch_trace_<fbase>_marker_api_trace.csv`` and
+``torch_trace_<fbase>_counter_collection.csv``). These correlate PyTorch operators
+with GPU kernels and performance counters. Analyze mode uses them to build
+per-operator CSVs under ``torch_trace/``; the source marker and counter files
+are removed after consolidation.
 
 ``torch_trace/`` directory
-   Per-operator CSV files. Each file is named from the **last component** of the
-   operator name (the part after the final ``/`` in hierarchical names), sanitized:
-   ``torch.`` removed, ``.`` replaced with ``_``. Examples: ``ones_like.csv``,
-   ``manual_seed.csv``, ``nn_functional_relu.csv``. Multiple operators that share the
-   same last segment append to the same file; for example, ``relu.csv`` (or
-   ``nn_functional_relu.csv``) can contain rows from various hierarchies that all
-   have ``relu`` at the lowest level. Columns include:
+   Contains per-operator CSV files. Columns include:
 
-   * ``Operator_Name`` - PyTorch operator name (e.g., ``torch.ones_like``, ``aten::relu``)
+   * ``Operator_Name`` - Full operator hierarchy (e.g.
+     ``nn.Module.Net.forward/nn.Module.Conv2d.forward/torch.nn.functional.relu``,
+     ``nn.Module.ResNet.forward/torch.nn.functional.relu``).
    * ``Context_Id`` - Call context (e.g., ``1@__init__.py:231``)
-   * ``Counter_Name`` / ``Counter_Value`` - Hardware counter measurements
+   * ``Counter_Name`` / ``Counter_Value`` - Performance counter values
    * ``Start_Timestamp_function`` / ``End_Timestamp_function`` - Operator timing
    * ``Start_Timestamp_kernel`` / ``End_Timestamp_kernel`` - Kernel timing
 
-   This per-operator layout enables focused analysis without processing the full trace.
+   This per-operator organization enables focused analysis of specific operators without
+   processing the entire trace.
 
-Sample rows from ``torch_trace/ones_like.csv`` (from profiling an mnist model):
+Sample rows from ``torch_trace/ones_like.csv`` (from profiling an mnist model).
 
 .. list-table::
    :header-rows: 1
@@ -929,7 +933,11 @@ This data enables analysis such as:
 Limitations
 -----------
 
-.. note::
+.. warning::
+
+   * Torch trace is experimental: use ``rocprof-compute --experimental profile ...
+     --torch-trace`` and ``rocprof-compute --experimental analyze ...`` with
+     ``--list-torch-operators`` or ``--torch-operator`` as needed.
 
    * The ``--torch-trace`` option requires the application to be a Python command
      or Python script.
@@ -937,8 +945,7 @@ Limitations
    * A valid PyTorch installation must be available in the environment where the
      workload runs.
 
-   * The workload's Python version must match the Python version that ROCm installs
-     roctx for (see the roctx import error message if you see it).
+   * Workload’s Python version must match roctx’s Python version.
 
    * This feature adds instrumentation overhead to track operator boundaries. For
      performance-critical measurements, consider profiling without this option first.
@@ -959,12 +966,11 @@ operator occurs in your PyTorch application:
    nn.Module.MyModel.forward/nn.Module.Linear.forward
    torch.nn.functional.relu
 
-The per-operator CSV under ``torch_trace/`` is named from the **last** segment of
-this hierarchy (sanitized). For example, ``nn.Module.Linear.forward`` becomes
-``nn_Module_Linear_forward.csv``; ``torch.nn.functional.relu`` becomes
-``nn_functional_relu.csv``.
+The per-operator CSV under ``torch_trace/`` is named after the operator 
+e.g. ``ones_like.csv``, ``relu.csv``, etc. The ``Operator_Name`` column in the CSV
+contains the full operator hierarchy.
 
-This hierarchical naming enables:
+This hierarchical information enables:
 
 * **Context preservation**: See exactly which model layer triggered each kernel
 * **Debugging**: Identify performance issues in specific model components
@@ -980,33 +986,27 @@ Example with hierarchical naming:
            self.encoder = nn.Linear(512, 1024)
            self.decoder = nn.Linear(1024, 512)
 
-       def forward(self, x):
-           x = self.encoder(x)  # Captured as nn.Module.MyModel.forward/nn.Module.Linear.forward
-           x = self.decoder(x)  # Same hierarchy; both write to nn_Module_Linear_forward.csv
-           return x
-
-**Analyzing captured operators**: After profiling, use the analyze CLI (see
-:doc:`../analyze/cli`) to list and filter by operator name. Filtering
-(``--torch-operator``) accepts either the full hierarchical name (e.g.
-``nn.Module.Net.forward/nn.Module.Conv2d.forward/torch.nn.functional.conv2d``)
-or the last segment only (e.g. ``conv2d``). Selection
-at intermediate levels is not supported yet.
+**Analyzing captured operators**: After profiling, use ``--experimental`` with
+analyze and see :doc:`../analyze/cli` for how to list and filter PyTorch operators
+(``--list-torch-operators``, ``--torch-operator``). Filtering accepts either the
+full hierarchical name or the last segment only (e.g. ``conv2d``).
 
 Combined with Other Options
 ----------------------------
 
-Torch operator mapping can be combined with other profiling options:
+Torch operator mapping can be combined with other profiling options. Use
+``--experimental`` with ``--torch-trace`` in all cases:
 
 .. code-block:: shell-session
 
    # Combine with block filtering for targeted counter collection
-   $ rocprof-compute profile --name mnist --torch-trace -b 11 12 -- python train.py
+   $ rocprof-compute --experimental profile --name mnist --torch-trace -b 11 12 -- python train.py
 
    # Combine with iteration multiplexing
-   $ rocprof-compute profile --name mnist --torch-trace --iteration-multiplexing kernel -- python train.py
+   $ rocprof-compute --experimental profile --name mnist --torch-trace --iteration-multiplexing kernel -- python train.py
 
    # Combine with kernel filtering (filters by GPU kernel name)
-   $ rocprof-compute profile --name mnist --torch-trace -k elementwise -- python train.py
+   $ rocprof-compute --experimental profile --name mnist --torch-trace -k elementwise -- python train.py
 
 .. _iteration-multiplexing:
 

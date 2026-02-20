@@ -616,13 +616,16 @@ Analysis database example
 PyTorch Operator Analysis
 --------------------------
 
-.. note::
+.. warning::
    
    PyTorch operator analysis is currently available only in CLI mode. GUI and TUI 
    will provide different interfaces for operator selection and visualization.
 
-After profiling with ``--torch-trace`` (see :ref:`torch-operator-profiling`), use
-the analyze CLI to list and filter captured operators.
+   These options require ``--experimental``. After profiling with 
+   ``--experimental --torch-trace`` (see :ref:`torch-operator-profiling`), 
+   use ``rocprof-compute --experimental analyze ...`` with 
+   ``--list-torch-operators`` or ``--torch-operator`` as needed.
+   
 
 Listing All Operators
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -631,7 +634,7 @@ Display all PyTorch operators captured during profiling:
 
 .. code-block:: shell-session
 
-   $ rocprof-compute analyze --path ./workload --list-torch-operators
+   $ rocprof-compute --experimental analyze --path ./workload --list-torch-operators
 
    ================================================================================
    PyTorch Operators in: ./workload
@@ -662,8 +665,7 @@ Selection at intermediate levels is not supported yet.
 
 .. code-block:: shell-session
 
-   # Full hierarchy
-   $ rocprof-compute analyze --path ./workload --torch-operator "nn.Module.Net.forward/nn.Module.Conv2d.forward/torch.nn.functional.conv2d"
+   $ rocprof-compute --experimental analyze --path ./workload --torch-operator "ResNet/layer4"
 
    # Last segment only (matches any operator whose name ends with that segment)
    $ rocprof-compute analyze --path ./workload --torch-operator conv2d
@@ -672,5 +674,5 @@ Selection at intermediate levels is not supported yet.
 
 .. code-block:: shell-session
 
-   $ rocprof-compute analyze --path ./workload \
+   $ rocprof-compute --experimental analyze --path ./workload \
        --torch-operator "nn.Module.Net.forward/nn.Module.Conv2d.forward/torch.nn.functional.conv2d" "relu"
