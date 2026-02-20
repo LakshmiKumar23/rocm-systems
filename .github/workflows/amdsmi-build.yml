@@ -135,7 +135,7 @@ jobs:
               # Verify Installation
               echo 'Verifying installation:'
               amd-smi version --loglevel=DEBUG > out.txt 2>&1 || true
-              cat out.txt
+              echo "$(cat out.txt)"
               python3 -m pip list | grep amd
               python3 -m pip list | grep pip
               python3 -m pip list | grep setuptools
