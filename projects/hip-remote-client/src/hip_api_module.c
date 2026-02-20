@@ -335,13 +335,9 @@ hipError_t hipModuleLaunchKernel(hipFunction_t f,
         uint8_t* arg_data = (uint8_t*)(args + 1);
         memcpy(arg_data, extra_buffer, extra_buffer_size);
 
-        HipRemoteResponseHeader resp;
-        memset(&resp, 0, sizeof(resp));
-
-        hipError_t err = hip_remote_request(
+        hipError_t err = hip_remote_request_fire_and_forget(
             HIP_OP_LAUNCH_KERNEL,
-            buffer, request_size,
-            &resp, sizeof(resp)
+            buffer, request_size
         );
 
         free(buffer);
@@ -367,9 +363,7 @@ hipError_t hipModuleLaunchKernel(hipFunction_t f,
             req_hdr.num_args = 0;
             req_hdr.launch_flags = 1;
 
-            HipRemoteResponseHeader resp;
-            memset(&resp, 0, sizeof(resp));
-            return hip_remote_request(HIP_OP_LAUNCH_KERNEL, &req_hdr, sizeof(req_hdr), &resp, sizeof(resp));
+            return hip_remote_request_fire_and_forget(HIP_OP_LAUNCH_KERNEL, &req_hdr, sizeof(req_hdr));
         }
     }
 
@@ -432,13 +426,9 @@ hipError_t hipModuleLaunchKernel(hipFunction_t f,
     hip_remote_log_debug("hipModuleLaunchKernel: built flat kernarg (%u bytes, %u params)",
                          (uint32_t)total_arg_size, num_params);
 
-    HipRemoteResponseHeader resp;
-    memset(&resp, 0, sizeof(resp));
-
-    hipError_t err = hip_remote_request(
+    hipError_t err = hip_remote_request_fire_and_forget(
         HIP_OP_LAUNCH_KERNEL,
-        buffer, request_size,
-        &resp, sizeof(resp)
+        buffer, request_size
     );
 
     free(buffer);
